@@ -101,9 +101,73 @@ class SmsParserTest {
     }
 
     @Test
-    fun `Credit to own account SMS is filtered out`() {
+    fun `ICICI credit SMS parses as credit transaction`() {
         val body = "ICICI Bank Acct XX530 credited with Rs 5000.00 on 10-Nov-26. UPI:123456789."
-        assertNull(SmsParser.parse("AX-ICICIT-S", body, now))
+        val tx = SmsParser.parse("AX-ICICIT-S", body, now)
+        assertNotNull(tx)
+        assertTrue(tx!!.isCredit)
+        assertFalse(tx.includeInBudget)
+        assertEquals(5000.0, tx.amount, 0.001)
+        assertEquals("123456789", tx.upiRef)
+        assertEquals("ICICI", tx.bank)
+    }
+
+    @Test
+    fun `HDFC credit by VPA parses sender and ignores available balance`() {
+        val body = "Rs.2500.00 credited to HDFC Bank A/C *1234 on 11-Nov-26 by VPA rahul@okicici (Ref No 631430990089). Avl Balance is Rs.15000.00."
+        val tx = SmsParser.parse("VM-HDFCBK-S", body, now)
+        assertNotNull(tx)
+        assertTrue(tx!!.isCredit)
+        assertEquals(2500.0, tx.amount, 0.001)
+        assertEquals("rahul@okicici", tx.merchant)
+        assertEquals("631430990089", tx.upiRef)
+        assertEquals("HDFC", tx.bank)
+    }
+
+    @Test
+    fun `SBI hyphen-credited SMS parses sender and amount`() {
+        val body = "Dear SBI User, your A/c X1234-credited by Rs.500.00 on 11Nov26 transfer from ANITA Ref No 432109876543 -SBI"
+        val tx = SmsParser.parse("AD-SBIINB-S", body, now)
+        assertNotNull(tx)
+        assertTrue(tx!!.isCredit)
+        assertEquals(500.0, tx.amount, 0.001)
+        assertEquals("ANITA", tx.merchant)
+        assertEquals("432109876543", tx.upiRef)
+        assertEquals("SBI", tx.bank)
+    }
+
+    @Test
+    fun `Kotak Received credit SMS parses correctly`() {
+        val body = "Received Rs.120.00 in your Kotak Bank AC X1234 from friend@okaxis on 11-11-26. UPI Ref: 556677889900."
+        val tx = SmsParser.parse("VM-KOTAKB-S", body, now)
+        assertNotNull(tx)
+        assertTrue(tx!!.isCredit)
+        assertEquals(120.0, tx.amount, 0.001)
+        assertEquals("friend@okaxis", tx.merchant)
+        assertEquals("556677889900", tx.upiRef)
+        assertEquals("Kotak", tx.bank)
+    }
+
+    @Test
+    fun `ICICI debit SMS containing merchant credited is NOT misclassified as credit`() {
+        val body = "ICICI Bank Acct XX530 debited for Rs 20.00 on 11-Nov-26; THE ULTIMATE EN credited. UPI:668141780387."
+        val tx = SmsParser.parse("AX-ICICIT-S", body, now)
+        assertNotNull(tx)
+        assertFalse(tx!!.isCredit)
+        assertEquals(20.0, tx.amount, 0.001)
+        assertEquals("THE ULTIMATE EN", tx.merchant)
+    }
+
+    @Test
+    fun `Promotional will be credited offer SMS is filtered out`() {
+        val body = "Rs.500 cashback will be credited to your HDFC Bank A/C if you apply now!"
+        assertNull(SmsParser.parse("VM-HDFCBK-P", body, now))
+    }
+
+    @Test
+    fun `Balance alert without debit or credit is filtered out`() {
+        val body = "Available balance in your HDFC Bank A/c *1234 is Rs.12000.00."
+        assertNull(SmsParser.parse("VM-HDFCBK-S", body, now))
     }
 
     @Test

@@ -15,17 +15,26 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY dateTimeEpoch DESC")
     fun getAllTransactions(): Flow<List<TransactionEntity>>
 
-    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay = :epochDay")
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay = :epochDay AND isCredit = 0")
     suspend fun getTotalSpentForDay(epochDay: Long): Double?
 
-    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay >= :fromEpochDay AND dateEpochDay < :toEpochDay")
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay >= :fromEpochDay AND dateEpochDay < :toEpochDay AND isCredit = 0")
     suspend fun getTotalSpentBetween(fromEpochDay: Long, toEpochDay: Long): Double?
+
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay = :epochDay AND isCredit = 1 AND includeInBudget = 1")
+    suspend fun getTotalCreditedIncludedForDay(epochDay: Long): Double?
+
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay >= :fromEpochDay AND dateEpochDay < :toEpochDay AND isCredit = 1 AND includeInBudget = 1")
+    suspend fun getTotalCreditedIncludedBetween(fromEpochDay: Long, toEpochDay: Long): Double?
 
     @Query("SELECT EXISTS(SELECT 1 FROM transactions WHERE upiRef = :upiRef LIMIT 1)")
     suspend fun existsByUpiRef(upiRef: String): Boolean
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(transaction: TransactionEntity): Long
+
+    @androidx.room.Update
+    suspend fun update(transaction: TransactionEntity)
 
     @Delete
     suspend fun delete(transaction: TransactionEntity)

@@ -11,8 +11,9 @@ import javax.inject.Singleton
 data class BudgetState(
     val dailyBudget: Double,
     val spentToday: Double,
-    val rolloverBalance: Double,          // Positive = unspent from previous days; negative = deficit
-    val totalAvailable: Double,           // dailyBudget + rolloverBalance
+    val creditedIncludedToday: Double = 0.0,
+    val rolloverBalance: Double,          // Positive = unspent/credited from previous days; negative = deficit
+    val totalAvailable: Double,           // dailyBudget + rolloverBalance + creditedIncludedToday
     val remainingToday: Double,           // totalAvailable - spentToday
     val currency: String = "₹",
     val today: LocalDate = LocalDate.now()
@@ -30,8 +31,8 @@ class BudgetEngine @Inject constructor(
      * - If budgetStartEpochDay has never been persisted (0L), initializes it permanently
      *   to the earliest transaction date (or today if none exist) so rollover accumulates across days.
      * - For all days in [startDay, today):
-     *   rollover = (daysCount * dailyBudget) - totalSpentBetween(startDay, today)
-     * - Today's available = dailyBudget + rolloverBalance
+     *   rollover = (daysCount * dailyBudget) - totalSpentBetween(startDay, today) + totalCreditedIncludedBetween(startDay, today)
+     * - Today's available = dailyBudget + rolloverBalance + creditedIncludedToday
      * - Remaining today = totalAvailable - spentToday
      */
     suspend fun calculateBudgetState(
@@ -48,6 +49,7 @@ class BudgetEngine @Inject constructor(
 
         val budgetStartDay = LocalDate.ofEpochDay(resolvedStartEpochDay)
         val spentToday = transactionRepository.getTotalSpentForDay(today)
+        val creditedIncludedToday = transactionRepository.getTotalCreditedIncludedForDay(today)
 
         val rolloverBalance = if (prefs.rolloverEnabled) {
             calculateRollover(prefs.dailyBudget, budgetStartDay, today)
@@ -55,12 +57,13 @@ class BudgetEngine @Inject constructor(
             0.0
         }
 
-        val totalAvailable = prefs.dailyBudget + rolloverBalance
+        val totalAvailable = prefs.dailyBudget + rolloverBalance + creditedIncludedToday
         val remainingToday = totalAvailable - spentToday
 
         return BudgetState(
             dailyBudget = prefs.dailyBudget,
             spentToday = spentToday,
+            creditedIncludedToday = creditedIncludedToday,
             rolloverBalance = rolloverBalance,
             totalAvailable = totalAvailable,
             remainingToday = remainingToday,
@@ -78,6 +81,7 @@ class BudgetEngine @Inject constructor(
         if (daysCount <= 0L) return 0.0
 
         val totalSpentBeforeToday = transactionRepository.getTotalSpentBetween(startDay, today)
-        return (daysCount * dailyBudget) - totalSpentBeforeToday
+        val totalCreditedBeforeToday = transactionRepository.getTotalCreditedIncludedBetween(startDay, today)
+        return (daysCount * dailyBudget) - totalSpentBeforeToday + totalCreditedBeforeToday
     }
 }

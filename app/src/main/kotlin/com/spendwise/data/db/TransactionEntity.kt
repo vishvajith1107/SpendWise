@@ -17,10 +17,12 @@ data class TransactionEntity(
     val amount: Double,
     val merchant: String,
     val description: String,
-    val dateTimeEpoch: Long,       // Stored as epoch seconds (UTC)
-    val dateEpochDay: Long,        // LocalDate.toEpochDay() for fast daily queries
-    val upiRef: String? = null,    // For deduplication - UNIQUE index
+    val dateTimeEpoch: Long,
+    val dateEpochDay: Long,
+    val upiRef: String? = null,
     val rawSms: String? = null,
     val isManual: Boolean = false,
-    val bank: String = "ICICI"
+    val bank: String = "ICICI",
+    val isCredit: Boolean = false,
+    val includeInBudget: Boolean = false
 )

@@ -43,4 +43,11 @@ class SettingsViewModel @Inject constructor(
             BudgetWidgetUpdater.update(app)
         }
     }
+
+    fun updateIncludeCreditsInBudget(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateIncludeCreditsInBudget(enabled)
+            BudgetWidgetUpdater.update(app)
+        }
+    }
 }

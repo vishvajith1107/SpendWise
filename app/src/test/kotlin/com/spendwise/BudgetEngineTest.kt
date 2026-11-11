@@ -18,6 +18,12 @@ class BudgetEngineTest {
     private val preferencesRepository: PreferencesRepository = mockk()
     private val budgetEngine = BudgetEngine(transactionRepository, preferencesRepository)
 
+    @org.junit.Before
+    fun setupDefaults() {
+        coEvery { transactionRepository.getTotalCreditedIncludedForDay(any()) } returns 0.0
+        coEvery { transactionRepository.getTotalCreditedIncludedBetween(any(), any()) } returns 0.0
+    }
+
     @Test
     fun `day 2 rolls over unspent balance from day 1 when budgetStartEpochDay is initialized`() = runTest {
         val day1 = LocalDate.of(2026, 11, 11)
@@ -124,5 +130,49 @@ class BudgetEngineTest {
 
         assertEquals(0.0, state.rolloverBalance, 0.001)
         assertEquals(130.0, state.remainingToday, 0.001)
+    }
+
+    @Test
+    fun `included credit today boosts totalAvailable and remainingToday`() = runTest {
+        val day1 = LocalDate.of(2026, 11, 11)
+
+        val prefs = UserPreferences(
+            dailyBudget = 130.0,
+            rolloverEnabled = true,
+            budgetStartEpochDay = day1.toEpochDay(),
+            includeCreditsInBudget = true
+        )
+
+        coEvery { transactionRepository.getTotalSpentForDay(day1) } returns 50.0
+        coEvery { transactionRepository.getTotalCreditedIncludedForDay(day1) } returns 100.0
+
+        val state = budgetEngine.calculateBudgetState(prefs, today = day1)
+
+        assertEquals(100.0, state.creditedIncludedToday, 0.001)
+        assertEquals(230.0, state.totalAvailable, 0.001)
+        assertEquals(180.0, state.remainingToday, 0.001)
+    }
+
+    @Test
+    fun `included credit on previous day carries forward into rollover`() = runTest {
+        val day1 = LocalDate.of(2026, 11, 11)
+        val day2 = LocalDate.of(2026, 11, 12)
+
+        val prefs = UserPreferences(
+            dailyBudget = 130.0,
+            rolloverEnabled = true,
+            budgetStartEpochDay = day1.toEpochDay()
+        )
+
+        coEvery { transactionRepository.getTotalSpentForDay(day2) } returns 0.0
+        coEvery { transactionRepository.getTotalSpentBetween(day1, day2) } returns 30.0
+        coEvery { transactionRepository.getTotalCreditedIncludedBetween(day1, day2) } returns 50.0
+
+        val state = budgetEngine.calculateBudgetState(prefs, today = day2)
+
+        // Day 1: 130 - 30 + 50 = +150 rollover; Day 2: 130 + 150 = 280
+        assertEquals(150.0, state.rolloverBalance, 0.001)
+        assertEquals(280.0, state.totalAvailable, 0.001)
+        assertEquals(280.0, state.remainingToday, 0.001)
     }
 }

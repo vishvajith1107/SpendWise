@@ -169,6 +169,31 @@ fun SettingsScreen(
                 }
             }
 
+            // Credited Amount Default Card
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Include Credits in Daily Limit", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "When enabled, incoming bank credit/refund SMS are automatically added to your daily spending limit. You can still toggle this per entry by tapping any transaction.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(
+                        checked = prefs?.includeCreditsInBudget ?: false,
+                        onCheckedChange = { viewModel.updateIncludeCreditsInBudget(it) }
+                    )
+                }
+            }
+
             // Reset Rollover Base
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(

@@ -14,8 +14,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
 import javax.inject.Inject
 
 data class DashboardUiState(
@@ -23,6 +21,8 @@ data class DashboardUiState(
     val todayTransactions: List<Transaction> = emptyList(),
     val isLoading: Boolean = true,
     val showAddTransactionSheet: Boolean = false,
+    val editingTransaction: Transaction? = null,
+    val defaultIncludeCreditsInBudget: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -37,6 +37,7 @@ class DashboardViewModel @Inject constructor(
 
     private val _currentDate = MutableStateFlow(LocalDate.now())
     private val _showAddSheet = MutableStateFlow(false)
+    private val _editingTransaction = MutableStateFlow<Transaction?>(null)
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
@@ -47,15 +48,18 @@ class DashboardViewModel @Inject constructor(
                     combine(
                         transactionRepository.getTransactionsForDay(today),
                         preferencesRepository.userPreferences,
-                        _showAddSheet
-                    ) { transactions, prefs, showSheet ->
+                        _showAddSheet,
+                        _editingTransaction
+                    ) { transactions, prefs, showSheet, editingTx ->
                         val budgetState = budgetEngine.calculateBudgetState(prefs, today)
                         BudgetWidgetUpdater.update(app)
                         DashboardUiState(
                             budgetState = budgetState,
                             todayTransactions = transactions,
                             isLoading = false,
-                            showAddTransactionSheet = showSheet
+                            showAddTransactionSheet = showSheet,
+                            editingTransaction = editingTx,
+                            defaultIncludeCreditsInBudget = prefs.includeCreditsInBudget
                         )
                     }
                 }
@@ -76,6 +80,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun showAddSheet() {
+        _editingTransaction.value = null
         _showAddSheet.value = true
     }
 
@@ -83,29 +88,37 @@ class DashboardViewModel @Inject constructor(
         _showAddSheet.value = false
     }
 
-    fun addManualTransaction(amount: Double, merchant: String, date: LocalDate = LocalDate.now()) {
+    fun startEditing(transaction: Transaction) {
+        _showAddSheet.value = false
+        _editingTransaction.value = transaction
+    }
+
+    fun stopEditing() {
+        _editingTransaction.value = null
+    }
+
+    fun saveManualTransaction(transaction: Transaction) {
         viewModelScope.launch {
-            val now = LocalDateTime.now()
-            val dateTime = if (date == now.toLocalDate()) now else date.atTime(LocalTime.NOON)
-            val transaction = Transaction(
-                amount = amount,
-                merchant = merchant,
-                description = "Manual: $merchant",
-                dateTime = dateTime,
-                date = date,
-                isManual = true,
-                bank = "Manual"
-            )
             transactionRepository.insertTransaction(transaction)
-
-            // If adding an expense for a past date (e.g., Yesterday), include that day in rollover
-            val prefs = preferencesRepository.userPreferences.first()
-            if (prefs.budgetStartEpochDay == 0L || date.toEpochDay() < prefs.budgetStartEpochDay) {
-                preferencesRepository.updateBudgetStartDay(date.toEpochDay())
-            }
-
+            extendBudgetStartDayIfNeeded(transaction.date)
             BudgetWidgetUpdater.update(app)
             hideAddSheet()
+        }
+    }
+
+    fun updateTransaction(transaction: Transaction) {
+        viewModelScope.launch {
+            transactionRepository.updateTransaction(transaction)
+            extendBudgetStartDayIfNeeded(transaction.date)
+            BudgetWidgetUpdater.update(app)
+            stopEditing()
+        }
+    }
+
+    private suspend fun extendBudgetStartDayIfNeeded(date: LocalDate) {
+        val prefs = preferencesRepository.userPreferences.first()
+        if (prefs.budgetStartEpochDay == 0L || date.toEpochDay() < prefs.budgetStartEpochDay) {
+            preferencesRepository.updateBudgetStartDay(date.toEpochDay())
         }
     }
 
@@ -113,6 +126,7 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             transactionRepository.deleteTransaction(transaction)
             BudgetWidgetUpdater.update(app)
+            stopEditing()
         }
     }
 }

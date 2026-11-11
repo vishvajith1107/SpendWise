@@ -52,12 +52,17 @@ class SmsReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         receiverScope.launch {
             try {
+                val prefs = preferencesRepository.userPreferences.first()
                 var anyInserted = false
-                for (transaction in parsedTransactions) {
+                for (parsed in parsedTransactions) {
+                    val transaction = if (parsed.isCredit) {
+                        parsed.copy(includeInBudget = prefs.includeCreditsInBudget)
+                    } else {
+                        parsed
+                    }
                     val inserted = transactionRepository.insertTransaction(transaction)
                     if (inserted) {
                         anyInserted = true
-                        val prefs = preferencesRepository.userPreferences.first()
                         val budgetState = budgetEngine.calculateBudgetState(prefs)
                         BudgetNotificationHelper.showPaymentNotification(
                             context = context,

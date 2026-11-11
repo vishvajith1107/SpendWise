@@ -1,5 +1,6 @@
 package com.spendwise.ui.history
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,9 +14,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.spendwise.ui.components.TransactionFormSheet
 import com.spendwise.ui.components.TransactionItem
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -28,6 +31,7 @@ fun HistoryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val dateFormatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy") }
+    val creditColor = if (isSystemInDarkTheme()) Color(0xFF81C784) else Color(0xFF2E7D32)
 
     Scaffold(
         topBar = {
@@ -108,12 +112,22 @@ fun HistoryScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text(
-                            "${uiState.currency}${"%.2f".format(uiState.totalSpentAllTime)}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "${uiState.currency}${"%.2f".format(uiState.totalSpentAllTime)}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (uiState.totalCreditedAllTime > 0.0) {
+                                Text(
+                                    "+${uiState.currency}${"%.2f".format(uiState.totalCreditedAllTime)} credited",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = creditColor
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -171,12 +185,24 @@ fun HistoryScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Text(
-                                    text = "Total: ${uiState.currency}${"%.2f".format(group.totalSpent)}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (group.totalCredited > 0.0) {
+                                        Text(
+                                            text = "+${uiState.currency}${"%.2f".format(group.totalCredited)}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = creditColor
+                                        )
+                                    }
+                                    if (group.totalSpent > 0.0 || group.totalCredited == 0.0) {
+                                        Text(
+                                            text = "Spent: ${uiState.currency}${"%.2f".format(group.totalSpent)}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -184,6 +210,7 @@ fun HistoryScreen(
                             TransactionItem(
                                 transaction = transaction,
                                 currency = uiState.currency,
+                                onClick = { viewModel.startEditing(transaction) },
                                 onDelete = { viewModel.deleteTransaction(transaction) }
                             )
                         }
@@ -191,5 +218,16 @@ fun HistoryScreen(
                 }
             }
         }
+    }
+
+    uiState.editingTransaction?.let { editing ->
+        TransactionFormSheet(
+            currency = uiState.currency,
+            initialTransaction = editing,
+            defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
+            onDismiss = { viewModel.stopEditing() },
+            onSave = { updated -> viewModel.updateTransaction(updated) },
+            onDelete = { toDelete -> viewModel.deleteTransaction(toDelete) }
+        )
     }
 }

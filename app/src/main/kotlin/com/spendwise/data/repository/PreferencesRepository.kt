@@ -19,6 +19,7 @@ class PreferencesRepository @Inject constructor(
         val KEY_ROLLOVER_ENABLED = booleanPreferencesKey("rollover_enabled")
         val KEY_BUDGET_START_EPOCH_DAY = longPreferencesKey("budget_start_epoch_day")
         val KEY_CURRENCY = stringPreferencesKey("currency")
+        val KEY_INCLUDE_CREDITS_IN_BUDGET = booleanPreferencesKey("include_credits_in_budget")
     }
 
     val userPreferences: Flow<UserPreferences> = dataStore.data
@@ -32,7 +33,8 @@ class PreferencesRepository @Inject constructor(
                 rolloverEnabled = prefs[KEY_ROLLOVER_ENABLED] ?: true,
                 // 0L signals uninitialized so BudgetEngine can resolve and persist start day once
                 budgetStartEpochDay = prefs[KEY_BUDGET_START_EPOCH_DAY] ?: 0L,
-                currency = prefs[KEY_CURRENCY] ?: "₹"
+                currency = prefs[KEY_CURRENCY] ?: "₹",
+                includeCreditsInBudget = prefs[KEY_INCLUDE_CREDITS_IN_BUDGET] ?: false
             )
         }
 
@@ -78,5 +80,9 @@ class PreferencesRepository @Inject constructor(
 
     suspend fun updateCurrency(currency: String) {
         dataStore.edit { it[KEY_CURRENCY] = currency }
+    }
+
+    suspend fun updateIncludeCreditsInBudget(enabled: Boolean) {
+        dataStore.edit { it[KEY_INCLUDE_CREDITS_IN_BUDGET] = enabled }
     }
 }

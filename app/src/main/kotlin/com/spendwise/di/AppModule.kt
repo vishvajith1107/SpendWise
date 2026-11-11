@@ -27,7 +27,9 @@ object AppModule {
             context,
             SpendWiseDatabase::class.java,
             "spendwise.db"
-        ).build()
+        )
+            .addMigrations(SpendWiseDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
     @Singleton

@@ -32,6 +32,12 @@ class TransactionRepository @Inject constructor(
     suspend fun getTotalSpentBetween(from: LocalDate, to: LocalDate): Double =
         dao.getTotalSpentBetween(from.toEpochDay(), to.toEpochDay()) ?: 0.0
 
+    suspend fun getTotalCreditedIncludedForDay(date: LocalDate): Double =
+        dao.getTotalCreditedIncludedForDay(date.toEpochDay()) ?: 0.0
+
+    suspend fun getTotalCreditedIncludedBetween(from: LocalDate, to: LocalDate): Double =
+        dao.getTotalCreditedIncludedBetween(from.toEpochDay(), to.toEpochDay()) ?: 0.0
+
     suspend fun getEarliestTransactionDate(): LocalDate? =
         dao.getEarliestEpochDay()?.let { LocalDate.ofEpochDay(it) }
 
@@ -44,6 +50,10 @@ class TransactionRepository @Inject constructor(
         }
         val rowId = dao.insert(transaction.toEntity())
         return rowId != -1L
+    }
+
+    suspend fun updateTransaction(transaction: Transaction) {
+        dao.update(transaction.toEntity())
     }
 
     suspend fun deleteTransaction(transaction: Transaction) {

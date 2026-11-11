@@ -59,11 +59,28 @@ object BudgetNotificationHelper {
         val remaining = budgetState.remainingToday
         val isOverBudget = remaining < 0
 
-        val title = "Paid $currency${"%.2f".format(transaction.amount)} • ${transaction.merchant}"
-        val summaryLine = if (isOverBudget) {
-            "Over budget by $currency${"%.2f".format(abs(remaining))}! (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
+        val (title, summaryLine, accentColor) = if (transaction.isCredit) {
+            val statusText = if (transaction.includeInBudget) {
+                "Added to daily limit • Remaining today: $currency${"%.2f".format(remaining)}"
+            } else {
+                "Not added to daily limit • Remaining today: $currency${"%.2f".format(remaining)}"
+            }
+            Triple(
+                "Credited +$currency${"%.2f".format(transaction.amount)} • ${transaction.merchant}",
+                statusText,
+                0xFF2E7D32.toInt()
+            )
         } else {
-            "Remaining today: $currency${"%.2f".format(remaining)} (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
+            val spentLine = if (isOverBudget) {
+                "Over budget by $currency${"%.2f".format(abs(remaining))}! (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
+            } else {
+                "Remaining today: $currency${"%.2f".format(remaining)} (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
+            }
+            Triple(
+                "Paid $currency${"%.2f".format(transaction.amount)} • ${transaction.merchant}",
+                spentLine,
+                if (isOverBudget) 0xFFB71C1C.toInt() else 0xFF1B5E20.toInt()
+            )
         }
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -75,8 +92,6 @@ object BudgetNotificationHelper {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        val accentColor = if (isOverBudget) 0xFFB71C1C.toInt() else 0xFF1B5E20.toInt()
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)

@@ -13,5 +13,7 @@ data class Transaction(
     val upiRef: String? = null,
     val rawSms: String? = null,
     val isManual: Boolean = false,
-    val bank: String = "ICICI"
+    val bank: String = "ICICI",
+    val isCredit: Boolean = false,
+    val includeInBudget: Boolean = false
 )

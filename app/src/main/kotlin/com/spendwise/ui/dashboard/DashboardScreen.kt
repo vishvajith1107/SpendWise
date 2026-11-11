@@ -6,7 +6,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,7 +16,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -25,8 +23,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.spendwise.domain.budget.BudgetState
+import com.spendwise.ui.components.TransactionFormSheet
 import com.spendwise.ui.components.TransactionItem
-import java.time.LocalDate
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,7 +85,7 @@ fun DashboardScreen(
             ExtendedFloatingActionButton(
                 onClick = { viewModel.showAddSheet() },
                 icon = { Icon(Icons.Default.Add, "Add") },
-                text = { Text("Add Expense") }
+                text = { Text("Add Entry") }
             )
         }
     ) { paddingValues ->
@@ -127,7 +125,7 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Today's Debits",
+                        "Today's Activity",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -162,12 +160,12 @@ fun DashboardScreen(
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    "No expenses yet today!",
+                                    "No transactions yet today!",
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "Incoming bank debit SMS will appear here automatically.",
+                                    "Incoming bank debit & credit SMS will appear here automatically.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -180,6 +178,7 @@ fun DashboardScreen(
                     TransactionItem(
                         transaction = transaction,
                         currency = uiState.budgetState?.currency ?: "₹",
+                        onClick = { viewModel.startEditing(transaction) },
                         onDelete = { viewModel.deleteTransaction(transaction) }
                     )
                 }
@@ -201,11 +200,22 @@ fun DashboardScreen(
     }
 
     if (uiState.showAddTransactionSheet) {
-        AddTransactionSheet(
+        TransactionFormSheet(
+            currency = uiState.budgetState?.currency ?: "₹",
+            defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
             onDismiss = { viewModel.hideAddSheet() },
-            onAdd = { amount, merchant, date ->
-                viewModel.addManualTransaction(amount, merchant, date)
-            }
+            onSave = { tx -> viewModel.saveManualTransaction(tx) }
+        )
+    }
+
+    uiState.editingTransaction?.let { editing ->
+        TransactionFormSheet(
+            currency = uiState.budgetState?.currency ?: "₹",
+            initialTransaction = editing,
+            defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
+            onDismiss = { viewModel.stopEditing() },
+            onSave = { updated -> viewModel.updateTransaction(updated) },
+            onDelete = { toDelete -> viewModel.deleteTransaction(toDelete) }
         )
     }
 }
@@ -261,6 +271,22 @@ fun BudgetSummaryCard(budget: BudgetState) {
                     trackColor = Color.White.copy(alpha = 0.25f)
                 )
 
+                if (budget.creditedIncludedToday > 0.0) {
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.16f)
+                    ) {
+                        Text(
+                            text = "Includes +${budget.currency}${"%.2f".format(budget.creditedIncludedToday)} credited today",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(18.dp))
 
                 Row(
@@ -291,93 +317,5 @@ private fun BudgetStatItem(label: String, value: String) {
         Text(label, color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp)
         Spacer(Modifier.height(2.dp))
         Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddTransactionSheet(
-    onDismiss: () -> Unit,
-    onAdd: (Double, String, LocalDate) -> Unit
-) {
-    var amount by remember { mutableStateOf("") }
-    var merchant by remember { mutableStateOf("") }
-    var amountError by remember { mutableStateOf(false) }
-    val today = remember { LocalDate.now() }
-    var selectedDate by remember { mutableStateOf(today) }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                "Add Cash / Manual Expense",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-
-            OutlinedTextField(
-                value = amount,
-                onValueChange = { amount = it; amountError = false },
-                label = { Text("Amount (₹)") },
-                isError = amountError,
-                supportingText = if (amountError) ({ Text("Enter a valid amount greater than 0") }) else null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Text("₹", modifier = Modifier.padding(start = 6.dp)) }
-            )
-
-            OutlinedTextField(
-                value = merchant,
-                onValueChange = { merchant = it },
-                label = { Text("Description / Merchant (e.g. Chai, Auto, Groceries)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Icon(Icons.Default.ShoppingCart, null) }
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Date:",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                FilterChip(
-                    selected = selectedDate == today,
-                    onClick = { selectedDate = today },
-                    label = { Text("Today") }
-                )
-                FilterChip(
-                    selected = selectedDate == today.minusDays(1),
-                    onClick = { selectedDate = today.minusDays(1) },
-                    label = { Text("Yesterday") }
-                )
-            }
-
-            Button(
-                onClick = {
-                    val parsedAmount = amount.toDoubleOrNull()
-                    if (parsedAmount == null || parsedAmount <= 0) {
-                        amountError = true
-                    } else {
-                        onAdd(parsedAmount, merchant.ifBlank { "Cash Expense" }, selectedDate)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Add, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Save Expense")
-            }
-        }
     }
 }

@@ -19,7 +19,9 @@ fun TransactionEntity.toDomain(): Transaction {
         upiRef = upiRef,
         rawSms = rawSms,
         isManual = isManual,
-        bank = bank
+        bank = bank,
+        isCredit = isCredit,
+        includeInBudget = includeInBudget
     )
 }
 
@@ -35,6 +37,8 @@ fun Transaction.toEntity(): TransactionEntity {
         upiRef = upiRef,
         rawSms = rawSms,
         isManual = isManual,
-        bank = bank
+        bank = bank,
+        isCredit = isCredit,
+        includeInBudget = includeInBudget
     )
 }
