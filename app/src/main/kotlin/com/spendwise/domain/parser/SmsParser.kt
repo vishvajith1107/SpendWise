@@ -29,7 +29,7 @@ object SmsParser {
 
         for (parser in parsers) {
             if (parser.canHandle(sender, body)) {
-                val tx = parser.parse(body, receivedAt)
+                val tx = parser.parse(sender, body, receivedAt)
                 if (tx != null && tx.amount > 0.0) return tx
             }
         }
@@ -69,7 +69,7 @@ object SmsParser {
 
 interface BankSmsParser {
     fun canHandle(sender: String, body: String): Boolean
-    fun parse(body: String, receivedAt: LocalDateTime): Transaction?
+    fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction?
 }
 
 internal object ParserUtils {
@@ -93,9 +93,12 @@ internal object ParserUtils {
     private val DEBIT_PHRASE_REGEX = Regex("""\bdebit\s+(?:of|for|rs|inr)\b""", RegexOption.IGNORE_CASE)
 
     private val CREDIT_KEYWORDS = listOf(
-        "credited to your", "credited into your", "credited to a/c", "credited to acct",
-        "credited to ac", "credited with", "credited by", "is credited", "has been credited",
-        "-credited", "received rs", "received inr", "received ₹", "deposited in", "deposited to"
+        "-credited", "is credited", "has been credited",
+        "received rs", "received inr", "received ₹"
+    )
+    private val CREDIT_ACTION_REGEX = Regex(
+        """\b(?:credited\s+(?:to|into|in|with|by|for)|deposited\s+(?:in|into|to|by))\b""",
+        RegexOption.IGNORE_CASE
     )
     private val CREDIT_ACCT_FIRST_REGEX = Regex(
         """(?:acct|a/c|account)\s+[A-Za-z0-9*X]+\s+(?:is\s+|has\s+been\s+)?credited""",
@@ -114,7 +117,9 @@ internal object ParserUtils {
         DEBIT_KEYWORDS.any { lowerBody.contains(it) } || DEBIT_PHRASE_REGEX.containsMatchIn(lowerBody)
 
     fun hasCreditIndicator(lowerBody: String): Boolean =
-        CREDIT_KEYWORDS.any { lowerBody.contains(it) } || CREDIT_ACCT_FIRST_REGEX.containsMatchIn(lowerBody)
+        CREDIT_KEYWORDS.any { lowerBody.contains(it) } ||
+            CREDIT_ACTION_REGEX.containsMatchIn(lowerBody) ||
+            CREDIT_ACCT_FIRST_REGEX.containsMatchIn(lowerBody)
 
     fun isLikelyBankSender(sender: String, body: String): Boolean {
         val upperSender = sender.uppercase(Locale.ROOT)
@@ -124,14 +129,22 @@ internal object ParserUtils {
             listOf("ICICI", "HDFC", "SBI", "STATE BANK", "AXIS BANK", "KOTAK").any { upperBody.contains(it) }
     }
 
-    fun detectBank(body: String): String {
-        val upper = body.uppercase(Locale.ROOT)
+    fun detectBank(sender: String, body: String): String {
+        val upperSender = sender.uppercase(Locale.ROOT)
+        when {
+            upperSender.contains("ICICI") -> return "ICICI"
+            upperSender.contains("HDFC") -> return "HDFC"
+            upperSender.contains("SBI") -> return "SBI"
+            upperSender.contains("AXIS") -> return "Axis"
+            upperSender.contains("KOTAK") -> return "Kotak"
+        }
+        val upperBody = body.uppercase(Locale.ROOT)
         return when {
-            upper.contains("ICICI") -> "ICICI"
-            upper.contains("HDFC") -> "HDFC"
-            upper.contains("SBI") || upper.contains("STATE BANK") -> "SBI"
-            upper.contains("AXIS") -> "Axis"
-            upper.contains("KOTAK") -> "Kotak"
+            upperBody.contains("ICICI BANK") || Regex("""\bICICI\b""").containsMatchIn(upperBody) -> "ICICI"
+            upperBody.contains("HDFC BANK") || Regex("""\bHDFC\b""").containsMatchIn(upperBody) -> "HDFC"
+            upperBody.contains("STATE BANK") || Regex("""\bSBI\b""").containsMatchIn(upperBody) -> "SBI"
+            upperBody.contains("AXIS BANK") || Regex("""\bAXIS\b""").containsMatchIn(upperBody) -> "Axis"
+            upperBody.contains("KOTAK BANK") || Regex("""\bKOTAK\b""").containsMatchIn(upperBody) -> "Kotak"
             else -> "Bank"
         }
     }
@@ -188,7 +201,7 @@ object IciciSmsParser : BankSmsParser {
         return isIcici && isSpend
     }
 
-    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+    override fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction? {
         val match = DEBIT_PATTERN_PRIMARY.find(body) ?: DEBIT_PATTERN_SECONDARY.find(body)
         if (match != null) {
             val (amountStr, dateStr, merchant, upiRef) = match.destructured
@@ -258,7 +271,7 @@ object HdfcSmsParser : BankSmsParser {
         return isHdfc && isSpend
     }
 
-    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+    override fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction? {
         val match = SENT_PATTERN.find(body)
             ?: DEBIT_INFO_PATTERN.find(body)
             ?: SPENT_CARD_PATTERN.find(body)
@@ -301,7 +314,7 @@ object SbiSmsParser : BankSmsParser {
         return isSbi && body.contains("debited", ignoreCase = true)
     }
 
-    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+    override fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction? {
         val match = UPI_PATTERN.find(body) ?: STANDARD_PATTERN.find(body) ?: return null
         val (amountStr, merchantRaw, refNo) = match.destructured
         val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
@@ -338,7 +351,7 @@ object AxisSmsParser : BankSmsParser {
         return isAxis && isSpend
     }
 
-    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+    override fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction? {
         val upiMatch = UPI_SLASH_PATTERN.find(body)
         if (upiMatch != null) {
             val (amountStr, ref, merchantRaw) = upiMatch.destructured
@@ -388,7 +401,7 @@ object KotakSmsParser : BankSmsParser {
         return isKotak && isSpend
     }
 
-    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+    override fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction? {
         val match = SENT_PATTERN.find(body) ?: return null
         val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
         val merchant = ParserUtils.cleanMerchant(match.groupValues[2])
@@ -435,7 +448,7 @@ object GenericDebitSmsParser : BankSmsParser {
         "dispute", "block", "report", "stop", "sms", "know", "view", "download", "your", "call", "check", "update"
     )
 
-    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+    override fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction? {
         val amountMatch = AMOUNT_AFTER_KEYWORD.find(body)
             ?: AMOUNT_BEFORE_KEYWORD.find(body)
             ?: AMOUNT_ANY_CURRENCY.find(body)
@@ -462,7 +475,7 @@ object GenericDebitSmsParser : BankSmsParser {
             upiRef = upiRef,
             rawSms = body,
             isManual = false,
-            bank = ParserUtils.detectBank(body)
+            bank = ParserUtils.detectBank(sender, body)
         )
     }
 }
@@ -504,7 +517,7 @@ object CreditSmsParser : BankSmsParser {
         return ParserUtils.isLikelyBankSender(sender, body) && ParserUtils.hasCreditIndicator(lower)
     }
 
-    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+    override fun parse(sender: String, body: String, receivedAt: LocalDateTime): Transaction? {
         val amountMatch = AMOUNT_AFTER_CREDIT.find(body)
             ?: AMOUNT_BEFORE_CREDIT.find(body)
             ?: AMOUNT_ANY_CURRENCY.find(body)
@@ -526,7 +539,7 @@ object CreditSmsParser : BankSmsParser {
         val senderName = ParserUtils.cleanMerchant(rawSource, fallback = "Bank Credit")
         val upiRef = slashMatch?.groupValues?.getOrNull(1)
             ?: ParserUtils.GENERIC_REF_REGEX.find(body)?.groupValues?.getOrNull(1)
-        val bank = ParserUtils.detectBank(body)
+        val bank = ParserUtils.detectBank(sender, body)
         val parsedDate = DATE_IN_BODY_PATTERN.find(body)?.groupValues?.getOrNull(1)
             ?.let { ParserUtils.parseDate(it, receivedAt.toLocalDate()) }
             ?: receivedAt.toLocalDate()

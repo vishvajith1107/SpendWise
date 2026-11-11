@@ -149,6 +149,18 @@ class SmsParserTest {
     }
 
     @Test
+    fun `Axis UPI P2A credit SMS parses sender and ref`() {
+        val body = "INR 350.00 credited to A/c no. XX1234 on 11-11-26. Info: UPI/P2A/432198765432/RAHUL. Avl Bal: INR 4550.00-Axis Bank"
+        val tx = SmsParser.parse("AD-AXISBK-S", body, now)
+        assertNotNull(tx)
+        assertTrue(tx!!.isCredit)
+        assertEquals(350.0, tx.amount, 0.001)
+        assertEquals("RAHUL", tx.merchant)
+        assertEquals("432198765432", tx.upiRef)
+        assertEquals("Axis", tx.bank)
+    }
+
+    @Test
     fun `ICICI debit SMS containing merchant credited is NOT misclassified as credit`() {
         val body = "ICICI Bank Acct XX530 debited for Rs 20.00 on 11-Nov-26; THE ULTIMATE EN credited. UPI:668141780387."
         val tx = SmsParser.parse("AX-ICICIT-S", body, now)
