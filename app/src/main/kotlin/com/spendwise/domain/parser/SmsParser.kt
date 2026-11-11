@@ -1,6 +1,7 @@
 package com.spendwise.domain.parser
 
 import com.spendwise.domain.model.Transaction
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -8,9 +9,8 @@ import java.util.Locale
 /**
  * Parses Indian bank debit SMS messages into Transaction objects.
  *
- * Supported formats (priority order):
- * 1. ICICI Bank: "ICICI Bank Acct XX530 debited for Rs 20.00 on 11-Nov-26; THE ULTIMATE EN credited. UPI:668141780387."
- * 2. Generic Indian bank debit patterns (SBI, HDFC, Axis, Kotak, etc.)
+ * Supports ICICI, HDFC, SBI, Axis, Kotak, and universal DLT Indian bank SMS headers
+ * (including -S / -T suffixes like AX-ICICIT-S, VM-HDFCBK-S, AD-SBIINB-S).
  */
 object SmsParser {
 
@@ -18,20 +18,22 @@ object SmsParser {
         IciciSmsParser,
         HdfcSmsParser,
         SbiSmsParser,
+        AxisSmsParser,
+        KotakSmsParser,
         GenericDebitSmsParser
     )
 
-    /**
-     * Attempts to parse an SMS from a bank sender into a Transaction.
-     * Returns null if the SMS is not a recognized debit message.
-     */
+    private val SPEND_KEYWORDS = listOf(
+        "debited", "debit", "spent", "sent rs", "sent inr", "paid rs", "paid inr", "withdrawn", "deducted"
+    )
+
     fun parse(sender: String, body: String, receivedAt: LocalDateTime = LocalDateTime.now()): Transaction? {
         if (isOtpOrIrrelevant(body)) return null
 
         for (parser in parsers) {
             if (parser.canHandle(sender, body)) {
                 val tx = parser.parse(body, receivedAt)
-                if (tx != null) return tx
+                if (tx != null && tx.amount > 0.0) return tx
             }
         }
         return null
@@ -39,21 +41,35 @@ object SmsParser {
 
     private fun isOtpOrIrrelevant(body: String): Boolean {
         val lower = body.lowercase(Locale.ROOT)
+        val hasSpendKeyword = SPEND_KEYWORDS.any { lower.contains(it) }
+
         return when {
-            // OTP and authentication patterns
+            // OTP & verification codes
             lower.contains("otp") -> true
             lower.contains("one time password") -> true
-            Regex("""\b\d{4,8}\b.{0,30}(valid|expire|minutes?)""").containsMatchIn(lower) -> true
+            lower.contains("verification code") -> true
+            Regex("""\b\d{4,8}\b.{0,30}(?:valid|expire|minutes?|mins?)""").containsMatchIn(lower) -> true
 
-            // Credits directly to user's account (not a spend)
-            lower.contains("credited to your") -> true
-            lower.contains("credited into your") -> true
-            lower.contains("deposited to your") -> true
-            lower.contains("received rs") && !lower.contains("debit") -> true
+            // Failed / declined / reversed alerts
+            lower.contains("transaction failed") || lower.contains("payment failed") ||
+                lower.contains("has failed") || lower.contains("declined") ||
+                lower.contains("unsuccessful") || lower.contains("reversed") -> true
 
-            // Balance alerts and account queries
-            lower.contains("balance is") && !lower.contains("debit") -> true
-            lower.contains("mini statement") -> true
+            // Promotional / spam messages
+            lower.contains("pre-approved") || lower.contains("loan offer") ||
+                lower.contains("apply now") || lower.contains("emi offer") -> true
+
+            // Credits / deposits / refunds to own account
+            lower.contains("credited to your") || lower.contains("credited into your") ||
+                lower.contains("credited to a/c") || lower.contains("credited to acct") ||
+                lower.contains("credited with") || lower.contains("deposited in") ||
+                lower.contains("deposited to") -> true
+            lower.contains("refund") && !hasSpendKeyword -> true
+            (lower.contains("received rs") || lower.contains("credited")) && !hasSpendKeyword -> true
+
+            // Balance alerts / mini statements without spend
+            (lower.contains("balance is") || lower.contains("mini statement")) && !hasSpendKeyword -> true
+
             else -> false
         }
     }
@@ -64,17 +80,38 @@ interface BankSmsParser {
     fun parse(body: String, receivedAt: LocalDateTime): Transaction?
 }
 
+internal object ParserUtils {
+    val GENERIC_REF_REGEX = Regex("""(?:UPI|Ref(?:\s*No)?|RRN|UTR)[:\-/\s]+(\d{8,16})""", RegexOption.IGNORE_CASE)
+
+    fun extractAmount(regex: Regex, body: String): Double? {
+        val match = regex.find(body) ?: return null
+        return match.groupValues.drop(1).firstOrNull { it.isNotBlank() }
+            ?.replace(",", "")
+            ?.toDoubleOrNull()
+    }
+
+    fun cleanMerchant(raw: String?): String {
+        val cleaned = raw
+            ?.replace(Regex("""\s+"""), " ")
+            ?.trim()
+            ?.trimEnd('.', ',', ';', '-', '/')
+            .orEmpty()
+        return if (cleaned.isBlank()) "Bank Debit" else cleaned.take(60)
+    }
+}
+
 // ─── ICICI Bank Parser ────────────────────────────────────────────────────────
 object IciciSmsParser : BankSmsParser {
-    // Exact format from user's SMS:
-    // "ICICI Bank Acct XX530 debited for Rs 20.00 on 11-Nov-26; THE ULTIMATE EN credited. UPI:668141780387."
     private val DEBIT_PATTERN_PRIMARY = Regex(
-        """ICICI Bank Acct\s+[A-Za-z0-9*]+\s+debited\s+for\s+(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s+on\s+([\d\w-]+);\s*(.+?)\s+credited\.?\s*UPI:(\d+)""",
+        """ICICI Bank Acct\s+[A-Za-z0-9*]+\s+debited\s+for\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+on\s+([\d\w-]+);\s*(.+?)\s+credited\.?\s*UPI:(\d+)""",
         RegexOption.IGNORE_CASE
     )
-
     private val DEBIT_PATTERN_SECONDARY = Regex(
-        """debited\s+for\s+(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s+on\s+([\d\w-]+);?\s*(.+?)\s*(?:credited|\.)?\s*UPI:(\d+)""",
+        """debited\s+(?:for|by|with)\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+on\s+([\d\w-]+);?\s*(.+?)\s*(?:credited|\.)?\s*UPI:(\d+)""",
+        RegexOption.IGNORE_CASE
+    )
+    private val CARD_SPENT_PATTERN = Regex(
+        """(?:INR|Rs\.?|₹)\s*([\d,]+\.?\d*)\s+spent\s+on\s+ICICI\s+Bank\s+(?:Credit\s+|Debit\s+)?Card\s+[A-Za-z0-9*]+\s+on\s+([\d\w-]+)\s+(?:at|on)\s+(.+?)(?:\.|Avl\s+Lmt|$)""",
         RegexOption.IGNORE_CASE
     )
 
@@ -87,58 +124,96 @@ object IciciSmsParser : BankSmsParser {
     )
 
     override fun canHandle(sender: String, body: String): Boolean {
-        val s = sender.uppercase()
-        val isIciciSender = s.contains("ICICI") || s == "AX-ICICIT-S" || s == "VM-ICICIB" || s.contains("ICICIB")
-        val isIciciBody = body.contains("ICICI Bank", ignoreCase = true)
-        val hasDebit = body.contains("debited", ignoreCase = true)
-        return (isIciciSender || isIciciBody) && hasDebit
+        val s = sender.uppercase(Locale.ROOT)
+        val isIcici = s.contains("ICICI") || body.contains("ICICI Bank", ignoreCase = true)
+        val isSpend = body.contains("debited", ignoreCase = true) || body.contains("spent", ignoreCase = true)
+        return isIcici && isSpend
     }
 
     override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
-        val match = DEBIT_PATTERN_PRIMARY.find(body) ?: DEBIT_PATTERN_SECONDARY.find(body) ?: return null
-        val (amountStr, dateStr, merchant, upiRef) = match.destructured
+        val match = DEBIT_PATTERN_PRIMARY.find(body) ?: DEBIT_PATTERN_SECONDARY.find(body)
+        if (match != null) {
+            val (amountStr, dateStr, merchant, upiRef) = match.destructured
+            val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
+            val parsedDate = parseDate(dateStr, receivedAt.toLocalDate())
+            val cleanedMerchant = ParserUtils.cleanMerchant(merchant)
+            return Transaction(
+                amount = amount,
+                merchant = cleanedMerchant,
+                description = "UPI debit - $cleanedMerchant",
+                dateTime = parsedDate.atTime(receivedAt.toLocalTime()),
+                upiRef = upiRef.trim(),
+                rawSms = body,
+                isManual = false,
+                bank = "ICICI"
+            )
+        }
+
+        val cardMatch = CARD_SPENT_PATTERN.find(body) ?: return null
+        val (amountStr, dateStr, merchant) = cardMatch.destructured
         val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
-
-        val parsedDate = dateFormatters.firstNotNullOfOrNull { fmt ->
-            runCatching { java.time.LocalDate.parse(dateStr.trim(), fmt) }.getOrNull()
-        } ?: receivedAt.toLocalDate()
-
-        val dateTime = parsedDate.atTime(receivedAt.toLocalTime())
-
+        val parsedDate = parseDate(dateStr, receivedAt.toLocalDate())
+        val cleanedMerchant = ParserUtils.cleanMerchant(merchant)
         return Transaction(
             amount = amount,
-            merchant = merchant.trim().take(60),
-            description = "UPI debit - ${merchant.trim()}",
-            dateTime = dateTime,
-            upiRef = upiRef.trim(),
+            merchant = cleanedMerchant,
+            description = "ICICI Card - $cleanedMerchant",
+            dateTime = parsedDate.atTime(receivedAt.toLocalTime()),
+            upiRef = null,
             rawSms = body,
             isManual = false,
             bank = "ICICI"
         )
     }
+
+    private fun parseDate(raw: String, fallback: LocalDate): LocalDate =
+        dateFormatters.firstNotNullOfOrNull { fmt ->
+            runCatching { LocalDate.parse(raw.trim(), fmt) }.getOrNull()
+        } ?: fallback
 }
 
 // ─── HDFC Bank Parser ─────────────────────────────────────────────────────────
 object HdfcSmsParser : BankSmsParser {
-    private val DEBIT_PATTERN = Regex(
-        """Rs\.?\s*([\d,]+\.?\d*)\s+debited\s+from\s+HDFC.+?Info:\s*(.+?)\.\s""",
+    // Pattern 1: "Sent Rs.200.00 From HDFC Bank A/C *1234 To MERCHANT On 11/11/26 Ref 123456789012"
+    private val SENT_PATTERN = Regex(
+        """Sent\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+From\s+HDFC[\s\S]+?\s+To\s+([^\n]+?)\s+On\s+""",
         RegexOption.IGNORE_CASE
     )
-    private val UPI_REF_PATTERN = Regex("""UPI[:\-/](\d{10,})""", RegexOption.IGNORE_CASE)
+    // Pattern 2: "Rs.500.00 debited from HDFC Bank A/C *1234 on 11-11-26. Info: UPI-MERCHANT. Avl Bal:..."
+    private val DEBIT_INFO_PATTERN = Regex(
+        """(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+debited\s+from\s+HDFC[\s\S]+?Info:\s*([^\n]+?)(?:\.\s|\n|$)""",
+        RegexOption.IGNORE_CASE
+    )
+    // Pattern 3: "Spent Rs.500.00 On HDFC Bank Card ... at MERCHANT on ..."
+    private val SPENT_CARD_PATTERN = Regex(
+        """Spent\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+On\s+HDFC.+?\s+at\s+(.+?)\s+on\s+""",
+        RegexOption.IGNORE_CASE
+    )
 
-    override fun canHandle(sender: String, body: String): Boolean =
-        (sender.uppercase().contains("HDFC") || body.contains("HDFC Bank", ignoreCase = true)) &&
-                body.contains("debited", ignoreCase = true)
+    override fun canHandle(sender: String, body: String): Boolean {
+        val s = sender.uppercase(Locale.ROOT)
+        val isHdfc = s.contains("HDFC") || body.contains("HDFC", ignoreCase = true)
+        val isSpend = body.contains("debited", ignoreCase = true) ||
+            body.contains("sent rs", ignoreCase = true) ||
+            body.contains("sent inr", ignoreCase = true) ||
+            body.contains("spent", ignoreCase = true)
+        return isHdfc && isSpend
+    }
 
     override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
-        val match = DEBIT_PATTERN.find(body) ?: return null
-        val (amountStr, info) = match.destructured
-        val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
-        val upiRef = UPI_REF_PATTERN.find(body)?.groupValues?.getOrNull(1)
+        val match = SENT_PATTERN.find(body)
+            ?: DEBIT_INFO_PATTERN.find(body)
+            ?: SPENT_CARD_PATTERN.find(body)
+            ?: return null
+
+        val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
+        val merchant = ParserUtils.cleanMerchant(match.groupValues[2])
+        val upiRef = ParserUtils.GENERIC_REF_REGEX.find(body)?.groupValues?.getOrNull(1)
+
         return Transaction(
             amount = amount,
-            merchant = info.trim().take(60),
-            description = "HDFC debit - ${info.trim()}",
+            merchant = merchant,
+            description = "HDFC debit - $merchant",
             dateTime = receivedAt,
             upiRef = upiRef,
             rawSms = body,
@@ -150,23 +225,33 @@ object HdfcSmsParser : BankSmsParser {
 
 // ─── SBI Parser ───────────────────────────────────────────────────────────────
 object SbiSmsParser : BankSmsParser {
-    private val DEBIT_PATTERN = Regex(
-        """debited\s+by\s+Rs\.?\s*([\d,]+\.?\d*).*?transfer\s+to\s+(.+?)\s+Ref\s+No\s+(\d+)""",
+    // Pattern 1: "Dear UPI user A/C X1234 debited by 45.0 on date 11Nov26 trf to MERCHANT Refno 432109876543"
+    private val UPI_PATTERN = Regex(
+        """debited\s+by\s+(?:Rs\.?|INR|₹)?\s*([\d,]+\.?\d*)\s+on\s+.*?(?:trf|transfer)\s+to\s+(.+?)\s+Ref\s*No\s*[:\s]*(\d+)""",
+        RegexOption.IGNORE_CASE
+    )
+    // Pattern 2: "Your A/c XX1234 debited by Rs 500.00 on 11Nov26 transfer to MERCHANT Ref No 123456789012"
+    private val STANDARD_PATTERN = Regex(
+        """debited\s+(?:by|for)\s+(?:Rs\.?|INR|₹)?\s*([\d,]+\.?\d*).*?transfer\s+to\s+(.+?)\s+Ref\s+No\s+(\d+)""",
         RegexOption.IGNORE_CASE
     )
 
-    override fun canHandle(sender: String, body: String): Boolean =
-        (sender.uppercase().contains("SBI") || body.contains("State Bank", ignoreCase = true)) &&
-                body.contains("debited", ignoreCase = true)
+    override fun canHandle(sender: String, body: String): Boolean {
+        val s = sender.uppercase(Locale.ROOT)
+        val isSbi = s.contains("SBI") || body.contains("State Bank", ignoreCase = true) ||
+            body.contains("SBI", ignoreCase = true)
+        return isSbi && body.contains("debited", ignoreCase = true)
+    }
 
     override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
-        val match = DEBIT_PATTERN.find(body) ?: return null
-        val (amountStr, merchant, refNo) = match.destructured
+        val match = UPI_PATTERN.find(body) ?: STANDARD_PATTERN.find(body) ?: return null
+        val (amountStr, merchantRaw, refNo) = match.destructured
         val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
+        val merchant = ParserUtils.cleanMerchant(merchantRaw)
         return Transaction(
             amount = amount,
-            merchant = merchant.trim().take(60),
-            description = "SBI debit - ${merchant.trim()}",
+            merchant = merchant,
+            description = "SBI debit - $merchant",
             dateTime = receivedAt,
             upiRef = refNo.trim(),
             rawSms = body,
@@ -176,52 +261,169 @@ object SbiSmsParser : BankSmsParser {
     }
 }
 
-// ─── Generic Indian Bank Parser (fallback) ────────────────────────────────────
-object GenericDebitSmsParser : BankSmsParser {
-    private val AMOUNT_PATTERN_1 = Regex(
-        """(?:debited|debit)\s+(?:for\s+)?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)""",
+// ─── Axis Bank Parser ─────────────────────────────────────────────────────────
+object AxisSmsParser : BankSmsParser {
+    // "INR 350.00 debited from A/c no. XX1234 on 11-11-26 ... UPI/P2M/123456789012/MERCHANT"
+    private val UPI_SLASH_PATTERN = Regex(
+        """(?:INR|Rs\.?|₹)\s*([\d,]+\.?\d*)\s+debited\s+from\s+A/c.+?UPI/(?:P2M|P2A)/(\d+)/([^\s.\n]+)""",
         RegexOption.IGNORE_CASE
     )
-    private val AMOUNT_PATTERN_2 = Regex(
-        """(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s+(?:has been\s+)?debited""",
-        RegexOption.IGNORE_CASE
-    )
-    private val UPI_REF_PATTERN = Regex("""UPI[:\-/\s](\d{10,})""", RegexOption.IGNORE_CASE)
-    private val MERCHANT_PATTERN = Regex(
-        """(?:to|at|towards|for)\s+([A-Z][A-Za-z0-9\s&'.,-]{2,40})""",
-        RegexOption.IGNORE_CASE
-    )
-
-    private val BANK_SENDER_REGEX = Regex(
-        """^(AX|VM|VK|AD|TM|BP|BZ|CP|MD|JD)-[A-Z]{4,8}$""",
+    private val CARD_PATTERN = Regex(
+        """Spent\s+(?:INR|Rs\.?|₹)\s*([\d,]+\.?\d*)\s+on\s+Axis\s+Bank\s+Card.+?\s+at\s+(.+?)\s+on\s+""",
         RegexOption.IGNORE_CASE
     )
 
     override fun canHandle(sender: String, body: String): Boolean {
-        val isLikelyBank = BANK_SENDER_REGEX.matches(sender) ||
-                listOf("BANK", "PAY", "AXIS", "KOTAK", "PNB", "BOI", "YES", "CANARA").any {
-                    sender.uppercase().contains(it)
-                }
-        val hasDebit = body.contains("debit", ignoreCase = true)
-        return isLikelyBank && hasDebit
+        val s = sender.uppercase(Locale.ROOT)
+        val isAxis = s.contains("AXIS") || body.contains("Axis Bank", ignoreCase = true)
+        val isSpend = body.contains("debited", ignoreCase = true) || body.contains("spent", ignoreCase = true)
+        return isAxis && isSpend
     }
 
     override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
-        val amountMatch = AMOUNT_PATTERN_1.find(body) ?: AMOUNT_PATTERN_2.find(body) ?: return null
+        val upiMatch = UPI_SLASH_PATTERN.find(body)
+        if (upiMatch != null) {
+            val (amountStr, ref, merchantRaw) = upiMatch.destructured
+            val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
+            val merchant = ParserUtils.cleanMerchant(merchantRaw)
+            return Transaction(
+                amount = amount,
+                merchant = merchant,
+                description = "Axis UPI - $merchant",
+                dateTime = receivedAt,
+                upiRef = ref.trim(),
+                rawSms = body,
+                isManual = false,
+                bank = "Axis"
+            )
+        }
+
+        val cardMatch = CARD_PATTERN.find(body) ?: return null
+        val (amountStr, merchantRaw) = cardMatch.destructured
+        val amount = amountStr.replace(",", "").toDoubleOrNull() ?: return null
+        val merchant = ParserUtils.cleanMerchant(merchantRaw)
+        return Transaction(
+            amount = amount,
+            merchant = merchant,
+            description = "Axis Card - $merchant",
+            dateTime = receivedAt,
+            upiRef = null,
+            rawSms = body,
+            isManual = false,
+            bank = "Axis"
+        )
+    }
+}
+
+// ─── Kotak Bank Parser ────────────────────────────────────────────────────────
+object KotakSmsParser : BankSmsParser {
+    // "Sent Rs.120.00 from Kotak Bank AC X1234 to merchant@upi on 11-11-26.UPI Ref 123456789012"
+    private val SENT_PATTERN = Regex(
+        """Sent\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+from\s+Kotak.+?\s+to\s+(.+?)\s+on\s+""",
+        RegexOption.IGNORE_CASE
+    )
+
+    override fun canHandle(sender: String, body: String): Boolean {
+        val s = sender.uppercase(Locale.ROOT)
+        val isKotak = s.contains("KOTAK") || body.contains("Kotak", ignoreCase = true)
+        val isSpend = body.contains("sent", ignoreCase = true) || body.contains("debited", ignoreCase = true)
+        return isKotak && isSpend
+    }
+
+    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+        val match = SENT_PATTERN.find(body) ?: return null
+        val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
+        val merchant = ParserUtils.cleanMerchant(match.groupValues[2])
+        val upiRef = ParserUtils.GENERIC_REF_REGEX.find(body)?.groupValues?.getOrNull(1)
+        return Transaction(
+            amount = amount,
+            merchant = merchant,
+            description = "Kotak debit - $merchant",
+            dateTime = receivedAt,
+            upiRef = upiRef,
+            rawSms = body,
+            isManual = false,
+            bank = "Kotak"
+        )
+    }
+}
+
+// ─── Universal Indian Bank Fallback Parser ────────────────────────────────────
+object GenericDebitSmsParser : BankSmsParser {
+    private val AMOUNT_AFTER_KEYWORD = Regex(
+        """(?:debited|debit|spent|sent|paid|deducted|withdrawn)\s+(?:by|for|with|of)?\s*(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)""",
+        RegexOption.IGNORE_CASE
+    )
+    private val AMOUNT_BEFORE_KEYWORD = Regex(
+        """(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:has\s+been\s+|is\s+)?(?:debited|spent|sent|paid|deducted|withdrawn)""",
+        RegexOption.IGNORE_CASE
+    )
+    private val AMOUNT_ANY_CURRENCY = Regex(
+        """(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)""",
+        RegexOption.IGNORE_CASE
+    )
+    private val MERCHANT_PATTERN = Regex(
+        """(?:trf\s+to|transfer\s+to|to|at|towards|info[:\s-]+)\s+([A-Za-z0-9][A-Za-z0-9\s&'._/@-]{1,45}?)(?=\s+(?:on|ref|upi|avl|not|if|call|sms|date)\b|[.;\n]|$)""",
+        RegexOption.IGNORE_CASE
+    )
+
+    // Matches DLT headers with or without -S / -T / -P suffix (e.g. AX-ICICIT-S, VM-HDFCBK-S, AD-SBIINB)
+    private val DLT_SENDER_REGEX = Regex(
+        """^[A-Z]{2}-[A-Z0-9]{4,8}(?:-[STPG])?$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val KNOWN_BANK_SENDER_TOKENS = listOf(
+        "BANK", "BNK", "ICICI", "HDFC", "SBI", "AXIS", "KOTAK", "IDFC", "INDUS",
+        "PNB", "BOI", "BOB", "YES", "CANARA", "FED", "UNION", "RBL", "CITI",
+        "HSBC", "SCB", "AU", "PAYTM", "AIRTEL", "JIO", "PAY"
+    )
+
+    private val SPEND_BODY_KEYWORDS = listOf(
+        "debited", "debit", "spent", "sent rs", "sent inr", "paid rs", "paid inr", "withdrawn", "deducted"
+    )
+
+    override fun canHandle(sender: String, body: String): Boolean {
+        val upperSender = sender.uppercase(Locale.ROOT)
+        val isLikelyBank = DLT_SENDER_REGEX.matches(sender) ||
+            KNOWN_BANK_SENDER_TOKENS.any { upperSender.contains(it) }
+        val lowerBody = body.lowercase(Locale.ROOT)
+        val hasSpend = SPEND_BODY_KEYWORDS.any { lowerBody.contains(it) }
+        return isLikelyBank && hasSpend
+    }
+
+    private val BOILERPLATE_MERCHANT_WORDS = setOf(
+        "dispute", "block", "report", "stop", "sms", "know", "view", "download", "your", "call", "check", "update"
+    )
+
+    override fun parse(body: String, receivedAt: LocalDateTime): Transaction? {
+        val amountMatch = AMOUNT_AFTER_KEYWORD.find(body)
+            ?: AMOUNT_BEFORE_KEYWORD.find(body)
+            ?: AMOUNT_ANY_CURRENCY.find(body)
+            ?: return null
         val amount = amountMatch.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
         if (amount <= 0.0) return null
 
-        val merchant = MERCHANT_PATTERN.find(body)?.groupValues?.getOrNull(1)?.trim() ?: "Bank Debit"
-        val upiRef = UPI_REF_PATTERN.find(body)?.groupValues?.getOrNull(1)
+        val merchantRaw = MERCHANT_PATTERN.findAll(body)
+            .map { it.groupValues[1].trim() }
+            .firstOrNull { candidate ->
+                val firstWord = candidate.lowercase(Locale.ROOT).split(" ").firstOrNull().orEmpty()
+                candidate.isNotBlank() &&
+                    !candidate.all { it.isDigit() } &&
+                    firstWord !in BOILERPLATE_MERCHANT_WORDS
+            }
+        val merchant = ParserUtils.cleanMerchant(merchantRaw)
+        val upiRef = ParserUtils.GENERIC_REF_REGEX.find(body)?.groupValues?.getOrNull(1)
+
         return Transaction(
             amount = amount,
-            merchant = merchant.take(60),
+            merchant = merchant,
             description = "Debit - $merchant",
             dateTime = receivedAt,
             upiRef = upiRef,
             rawSms = body,
             isManual = false,
-            bank = "Other"
+            bank = "Bank"
         )
     }
 }

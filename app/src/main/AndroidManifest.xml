@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- SMS & Notification permissions -->
+    <!-- SMS, Notification & Boot permissions -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- No INTERNET permission - 100% offline -->
 
@@ -47,6 +48,19 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/budget_widget_info" />
+        </receiver>
+
+        <!-- Midnight Widget & Rollover Refresh Receiver -->
+        <receiver
+            android:name=".receiver.MidnightWidgetReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.spendwise.ACTION_MIDNIGHT_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
         </receiver>
 
     </application>
