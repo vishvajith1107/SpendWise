@@ -1,15 +1,17 @@
 package com.spendwise.domain.budget
 
+import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.TransactionRepository
 import com.spendwise.data.repository.UserPreferences
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 data class BudgetState(
     val dailyBudget: Double,
     val spentToday: Double,
-    val rolloverBalance: Double,          // Positive = unspent from previous days
+    val rolloverBalance: Double,          // Positive = unspent from previous days; negative = deficit
     val totalAvailable: Double,           // dailyBudget + rolloverBalance
     val remainingToday: Double,           // totalAvailable - spentToday
     val currency: String = "₹",
@@ -18,21 +20,33 @@ data class BudgetState(
 
 @Singleton
 class BudgetEngine @Inject constructor(
-    private val transactionRepository: TransactionRepository
+    private val transactionRepository: TransactionRepository,
+    private val preferencesRepository: PreferencesRepository
 ) {
     /**
-     * Calculates the current budget state.
+     * Calculates the current budget state for [today].
      *
      * Rollover logic:
-     * - For each past day since [budgetStartDay], compute: unspent = dailyBudget - spent
-     * - Sum all unspent amounts (can be negative if overspent on a day)
-     * - Today's available = dailyBudget + cumulativeRollover
-     * - remaining = todayAvailable - spentToday
+     * - If budgetStartEpochDay has never been persisted (0L), initializes it permanently
+     *   to the earliest transaction date (or today if none exist) so rollover accumulates across days.
+     * - For all days in [startDay, today):
+     *   rollover = (daysCount * dailyBudget) - totalSpentBetween(startDay, today)
+     * - Today's available = dailyBudget + rolloverBalance
+     * - Remaining today = totalAvailable - spentToday
      */
-    suspend fun calculateBudgetState(prefs: UserPreferences): BudgetState {
-        val today = LocalDate.now()
-        val budgetStartDay = LocalDate.ofEpochDay(prefs.budgetStartEpochDay)
+    suspend fun calculateBudgetState(
+        prefs: UserPreferences,
+        today: LocalDate = LocalDate.now()
+    ): BudgetState {
+        val resolvedStartEpochDay = if (prefs.budgetStartEpochDay <= 0L) {
+            val earliest = transactionRepository.getEarliestTransactionDate()
+            val defaultStart = if (earliest != null && earliest.isBefore(today)) earliest else today
+            preferencesRepository.ensureBudgetStartDayInitialized(defaultStart.toEpochDay())
+        } else {
+            prefs.budgetStartEpochDay
+        }
 
+        val budgetStartDay = LocalDate.ofEpochDay(resolvedStartEpochDay)
         val spentToday = transactionRepository.getTotalSpentForDay(today)
 
         val rolloverBalance = if (prefs.rolloverEnabled) {
@@ -55,25 +69,15 @@ class BudgetEngine @Inject constructor(
         )
     }
 
-    /**
-     * Calculates cumulative rollover from [startDay] up to (not including) today.
-     * Each past day contributes: dailyBudget - amountSpentThatDay
-     * This can be negative on overspent days, which correctly reduces future budget.
-     */
     private suspend fun calculateRollover(
         dailyBudget: Double,
         startDay: LocalDate,
         today: LocalDate
     ): Double {
-        if (!startDay.isBefore(today)) return 0.0
+        val daysCount = ChronoUnit.DAYS.between(startDay, today)
+        if (daysCount <= 0L) return 0.0
 
-        var rollover = 0.0
-        var cursor = startDay
-        while (cursor.isBefore(today)) {
-            val spent = transactionRepository.getTotalSpentForDay(cursor)
-            rollover += (dailyBudget - spent)
-            cursor = cursor.plusDays(1)
-        }
-        return rollover
+        val totalSpentBeforeToday = transactionRepository.getTotalSpentBetween(startDay, today)
+        return (daysCount * dailyBudget) - totalSpentBeforeToday
     }
 }

@@ -18,22 +18,37 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.spendwise.domain.budget.BudgetState
-import com.spendwise.domain.model.Transaction
-import java.time.format.DateTimeFormatter
+import com.spendwise.ui.components.TransactionItem
+import java.time.LocalDate
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
+    onNavigateToHistory: () -> Unit,
     onNavigateToSettings: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Refresh date automatically when returning to the app after midnight
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshDateIfNeeded()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Scaffold(
         topBar = {
@@ -59,6 +74,9 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(Icons.Default.History, contentDescription = "Transaction History")
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -84,7 +102,12 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 12.dp,
+                bottom = 88.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Budget Card
@@ -109,7 +132,7 @@ fun DashboardScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "${uiState.todayTransactions.size} transactions",
+                        "${uiState.todayTransactions.size} transaction${if (uiState.todayTransactions.size == 1) "" else "s"}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -120,12 +143,14 @@ fun DashboardScreen(
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        )
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
+                                .padding(28.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -133,7 +158,7 @@ fun DashboardScreen(
                                     Icons.Default.CheckCircle,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(40.dp)
+                                    modifier = Modifier.size(38.dp)
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Text(
@@ -159,13 +184,28 @@ fun DashboardScreen(
                     )
                 }
             }
+
+            // Quick link to Full History
+            item {
+                OutlinedButton(
+                    onClick = onNavigateToHistory,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("View All Transaction History")
+                }
+            }
         }
     }
 
     if (uiState.showAddTransactionSheet) {
         AddTransactionSheet(
             onDismiss = { viewModel.hideAddSheet() },
-            onAdd = { amount, merchant -> viewModel.addManualTransaction(amount, merchant) }
+            onAdd = { amount, merchant, date ->
+                viewModel.addManualTransaction(amount, merchant, date)
+            }
         )
     }
 }
@@ -211,7 +251,6 @@ fun BudgetSummaryCard(budget: BudgetState) {
 
                 Spacer(Modifier.height(14.dp))
 
-                // Spend Progress Bar
                 LinearProgressIndicator(
                     progress = { fillFraction },
                     modifier = Modifier
@@ -236,12 +275,10 @@ fun BudgetSummaryCard(budget: BudgetState) {
                         label = "Spent Today",
                         value = "${budget.currency}${"%.2f".format(budget.spentToday)}"
                     )
-                    if (budget.rolloverBalance != 0.0) {
-                        BudgetStatItem(
-                            label = "Rollover",
-                            value = "${if (budget.rolloverBalance >= 0) "+" else ""}${budget.currency}${"%.0f".format(budget.rolloverBalance)}"
-                        )
-                    }
+                    BudgetStatItem(
+                        label = "Rollover",
+                        value = "${if (budget.rolloverBalance >= 0) "+" else "-"}${budget.currency}${"%.2f".format(abs(budget.rolloverBalance))}"
+                    )
                 }
             }
         }
@@ -257,107 +294,17 @@ private fun BudgetStatItem(label: String, value: String) {
     }
 }
 
-@Composable
-fun TransactionItem(
-    transaction: Transaction,
-    currency: String,
-    onDelete: () -> Unit
-) {
-    val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = if (transaction.isManual)
-                    MaterialTheme.colorScheme.secondaryContainer
-                else
-                    MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        if (transaction.isManual) Icons.Default.EditNote else Icons.Default.Sms,
-                        contentDescription = null,
-                        tint = if (transaction.isManual)
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        else
-                            MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = transaction.merchant,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                val bankLabel = if (transaction.bank.isNotBlank() && transaction.bank != "Manual")
-                    " · ${transaction.bank}" else ""
-                val upiLabel = if (!transaction.upiRef.isNullOrBlank()) " · UPI:${transaction.upiRef.takeLast(4)}" else ""
-                Text(
-                    text = "${transaction.dateTime.format(timeFormatter)}$bankLabel$upiLabel",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Text(
-                text = "-$currency${"%.2f".format(transaction.amount)}",
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 15.sp
-            )
-
-            IconButton(onClick = { showDeleteDialog = true }) {
-                Icon(
-                    Icons.Default.DeleteOutline,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Entry?") },
-            text = { Text("Remove '${transaction.merchant}' ($currency${"%.2f".format(transaction.amount)}) from your daily spend?") },
-            confirmButton = {
-                TextButton(onClick = { onDelete(); showDeleteDialog = false }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTransactionSheet(onDismiss: () -> Unit, onAdd: (Double, String) -> Unit) {
+fun AddTransactionSheet(
+    onDismiss: () -> Unit,
+    onAdd: (Double, String, LocalDate) -> Unit
+) {
     var amount by remember { mutableStateOf("") }
     var merchant by remember { mutableStateOf("") }
     var amountError by remember { mutableStateOf(false) }
+    val today = remember { LocalDate.now() }
+    var selectedDate by remember { mutableStateOf(today) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -367,7 +314,11 @@ fun AddTransactionSheet(onDismiss: () -> Unit, onAdd: (Double, String) -> Unit) 
                 .padding(bottom = 36.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Add Cash / Manual Expense", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                "Add Cash / Manual Expense",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
 
             OutlinedTextField(
                 value = amount,
@@ -390,13 +341,34 @@ fun AddTransactionSheet(onDismiss: () -> Unit, onAdd: (Double, String) -> Unit) 
                 leadingIcon = { Icon(Icons.Default.ShoppingCart, null) }
             )
 
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Date:",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FilterChip(
+                    selected = selectedDate == today,
+                    onClick = { selectedDate = today },
+                    label = { Text("Today") }
+                )
+                FilterChip(
+                    selected = selectedDate == today.minusDays(1),
+                    onClick = { selectedDate = today.minusDays(1) },
+                    label = { Text("Yesterday") }
+                )
+            }
+
             Button(
                 onClick = {
                     val parsedAmount = amount.toDoubleOrNull()
                     if (parsedAmount == null || parsedAmount <= 0) {
                         amountError = true
                     } else {
-                        onAdd(parsedAmount, merchant.ifBlank { "Cash Expense" })
+                        onAdd(parsedAmount, merchant.ifBlank { "Cash Expense" }, selectedDate)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

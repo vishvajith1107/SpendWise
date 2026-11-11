@@ -30,18 +30,46 @@ class PreferencesRepository @Inject constructor(
             UserPreferences(
                 dailyBudget = prefs[KEY_DAILY_BUDGET] ?: 500.0,
                 rolloverEnabled = prefs[KEY_ROLLOVER_ENABLED] ?: true,
-                budgetStartEpochDay = prefs[KEY_BUDGET_START_EPOCH_DAY]
-                    ?: LocalDate.now().toEpochDay(),
+                // 0L signals uninitialized so BudgetEngine can resolve and persist start day once
+                budgetStartEpochDay = prefs[KEY_BUDGET_START_EPOCH_DAY] ?: 0L,
                 currency = prefs[KEY_CURRENCY] ?: "₹"
             )
         }
 
+    /**
+     * Persists [defaultEpochDay] as the budget start day if it has never been saved yet.
+     * Returns the persisted epoch day.
+     */
+    suspend fun ensureBudgetStartDayInitialized(defaultEpochDay: Long): Long {
+        var resolved = defaultEpochDay
+        dataStore.edit { prefs ->
+            val existing = prefs[KEY_BUDGET_START_EPOCH_DAY]
+            if (existing == null || existing == 0L) {
+                prefs[KEY_BUDGET_START_EPOCH_DAY] = defaultEpochDay
+                resolved = defaultEpochDay
+            } else {
+                resolved = existing
+            }
+        }
+        return resolved
+    }
+
     suspend fun updateDailyBudget(budget: Double) {
-        dataStore.edit { it[KEY_DAILY_BUDGET] = budget }
+        dataStore.edit { prefs ->
+            prefs[KEY_DAILY_BUDGET] = budget
+            if (prefs[KEY_BUDGET_START_EPOCH_DAY] == null || prefs[KEY_BUDGET_START_EPOCH_DAY] == 0L) {
+                prefs[KEY_BUDGET_START_EPOCH_DAY] = LocalDate.now().toEpochDay()
+            }
+        }
     }
 
     suspend fun updateRolloverEnabled(enabled: Boolean) {
-        dataStore.edit { it[KEY_ROLLOVER_ENABLED] = enabled }
+        dataStore.edit { prefs ->
+            prefs[KEY_ROLLOVER_ENABLED] = enabled
+            if (prefs[KEY_BUDGET_START_EPOCH_DAY] == null || prefs[KEY_BUDGET_START_EPOCH_DAY] == 0L) {
+                prefs[KEY_BUDGET_START_EPOCH_DAY] = LocalDate.now().toEpochDay()
+            }
+        }
     }
 
     suspend fun updateBudgetStartDay(epochDay: Long) {

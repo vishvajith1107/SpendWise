@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.spendwise.ui.SpendWiseNavHost
 import com.spendwise.ui.notification.BudgetNotificationHelper
 import com.spendwise.ui.theme.SpendWiseTheme
+import com.spendwise.ui.widget.BudgetWidgetUpdater
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -24,6 +25,11 @@ class MainActivity : ComponentActivity() {
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* Permission results handled gracefully */ }
+
+    override fun onResume() {
+        super.onResume()
+        BudgetWidgetUpdater.update(this)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

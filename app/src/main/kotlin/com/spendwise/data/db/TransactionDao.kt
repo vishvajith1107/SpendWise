@@ -35,4 +35,7 @@ interface TransactionDao {
 
     @Query("SELECT * FROM transactions ORDER BY dateTimeEpoch DESC LIMIT 1")
     suspend fun getLatestTransaction(): TransactionEntity?
+
+    @Query("SELECT MIN(dateEpochDay) FROM transactions")
+    suspend fun getEarliestEpochDay(): Long?
 }

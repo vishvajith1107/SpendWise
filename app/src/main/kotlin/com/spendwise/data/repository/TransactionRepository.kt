@@ -32,6 +32,9 @@ class TransactionRepository @Inject constructor(
     suspend fun getTotalSpentBetween(from: LocalDate, to: LocalDate): Double =
         dao.getTotalSpentBetween(from.toEpochDay(), to.toEpochDay()) ?: 0.0
 
+    suspend fun getEarliestTransactionDate(): LocalDate? =
+        dao.getEarliestEpochDay()?.let { LocalDate.ofEpochDay(it) }
+
     /**
      * Inserts a transaction. Returns false if duplicate UPI ref detected (deduplication).
      */
