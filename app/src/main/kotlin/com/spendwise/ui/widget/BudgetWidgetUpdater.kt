@@ -9,11 +9,15 @@ import kotlinx.coroutines.launch
 object BudgetWidgetUpdater {
     fun update(context: Context) {
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                BudgetWidget().updateAll(context)
-            } catch (_: Exception) {
-                // If widget is not placed on home screen, ignore safely
-            }
+            updateNow(context)
+        }
+    }
+
+    suspend fun updateNow(context: Context) {
+        try {
+            BudgetWidget().updateAll(context)
+        } catch (_: Exception) {
+            // If widget is not placed on home screen, ignore safely
         }
     }
 }
