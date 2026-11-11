@@ -1,0 +1,38 @@
+package com.spendwise.data.db
+
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface TransactionDao {
+
+    @Query("SELECT * FROM transactions WHERE dateEpochDay = :epochDay ORDER BY dateTimeEpoch DESC")
+    fun getTransactionsForDay(epochDay: Long): Flow<List<TransactionEntity>>
+
+    @Query("SELECT * FROM transactions WHERE dateEpochDay >= :fromEpochDay ORDER BY dateTimeEpoch DESC")
+    fun getTransactionsSince(fromEpochDay: Long): Flow<List<TransactionEntity>>
+
+    @Query("SELECT * FROM transactions ORDER BY dateTimeEpoch DESC")
+    fun getAllTransactions(): Flow<List<TransactionEntity>>
+
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay = :epochDay")
+    suspend fun getTotalSpentForDay(epochDay: Long): Double?
+
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay >= :fromEpochDay AND dateEpochDay < :toEpochDay")
+    suspend fun getTotalSpentBetween(fromEpochDay: Long, toEpochDay: Long): Double?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM transactions WHERE upiRef = :upiRef LIMIT 1)")
+    suspend fun existsByUpiRef(upiRef: String): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(transaction: TransactionEntity): Long
+
+    @Delete
+    suspend fun delete(transaction: TransactionEntity)
+
+    @Query("DELETE FROM transactions WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("SELECT * FROM transactions ORDER BY dateTimeEpoch DESC LIMIT 1")
+    suspend fun getLatestTransaction(): TransactionEntity?
+}

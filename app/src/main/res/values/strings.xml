@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SpendWise</string>
+    <string name="remaining_today">Remaining Today</string>
+    <string name="daily_budget">Daily Budget</string>
+    <string name="spent_today">Spent Today</string>
+    <string name="rollover">Rollover</string>
+    <string name="widget_title">SpendWise Balance</string>
+    <string name="no_transactions">No expenses today</string>
+</resources>
