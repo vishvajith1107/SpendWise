@@ -26,6 +26,9 @@ class TransactionRepository @Inject constructor(
         dao.getAllTransactions()
             .map { list -> list.map { it.toDomain() } }
 
+    suspend fun getAllTransactionsSnapshot(): List<Transaction> =
+        dao.getAllTransactionsOnce().map { it.toDomain() }
+
     suspend fun getTotalSpentForDay(date: LocalDate): Double =
         dao.getTotalSpentForDay(date.toEpochDay()) ?: 0.0
 
@@ -47,6 +50,20 @@ class TransactionRepository @Inject constructor(
     suspend fun insertTransaction(transaction: Transaction): Boolean {
         if (transaction.upiRef != null && dao.existsByUpiRef(transaction.upiRef)) {
             return false // Duplicate – skip silently
+        }
+        val rowId = dao.insert(transaction.toEntity())
+        return rowId != -1L
+    }
+
+    /**
+     * Imports a historical SMS or backup transaction without duplicating existing records.
+     */
+    suspend fun importTransactionIfNew(transaction: Transaction): Boolean {
+        if (transaction.upiRef != null && dao.existsByUpiRef(transaction.upiRef)) {
+            return false
+        }
+        if (dao.existsBySignature(transaction.date.toEpochDay(), transaction.amount, transaction.merchant)) {
+            return false
         }
         val rowId = dao.insert(transaction.toEntity())
         return rowId != -1L

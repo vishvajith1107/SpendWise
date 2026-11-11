@@ -24,5 +24,6 @@ data class TransactionEntity(
     val isManual: Boolean = false,
     val bank: String = "ICICI",
     val isCredit: Boolean = false,
-    val includeInBudget: Boolean = false
+    val includeInBudget: Boolean = false,
+    val category: String = "OTHER"
 )

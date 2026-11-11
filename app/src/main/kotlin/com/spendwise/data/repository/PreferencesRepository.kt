@@ -20,6 +20,8 @@ class PreferencesRepository @Inject constructor(
         val KEY_BUDGET_START_EPOCH_DAY = longPreferencesKey("budget_start_epoch_day")
         val KEY_CURRENCY = stringPreferencesKey("currency")
         val KEY_INCLUDE_CREDITS_IN_BUDGET = booleanPreferencesKey("include_credits_in_budget")
+        val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        val KEY_PIN_HASH = stringPreferencesKey("pin_hash")
     }
 
     val userPreferences: Flow<UserPreferences> = dataStore.data
@@ -34,7 +36,9 @@ class PreferencesRepository @Inject constructor(
                 // 0L signals uninitialized so BudgetEngine can resolve and persist start day once
                 budgetStartEpochDay = prefs[KEY_BUDGET_START_EPOCH_DAY] ?: 0L,
                 currency = prefs[KEY_CURRENCY] ?: "₹",
-                includeCreditsInBudget = prefs[KEY_INCLUDE_CREDITS_IN_BUDGET] ?: false
+                includeCreditsInBudget = prefs[KEY_INCLUDE_CREDITS_IN_BUDGET] ?: false,
+                themeMode = prefs[KEY_THEME_MODE] ?: "SYSTEM",
+                pinHash = prefs[KEY_PIN_HASH]?.takeIf { it.isNotBlank() }
             )
         }
 
@@ -84,5 +88,32 @@ class PreferencesRepository @Inject constructor(
 
     suspend fun updateIncludeCreditsInBudget(enabled: Boolean) {
         dataStore.edit { it[KEY_INCLUDE_CREDITS_IN_BUDGET] = enabled }
+    }
+
+    suspend fun updateThemeMode(mode: String) {
+        dataStore.edit { it[KEY_THEME_MODE] = mode }
+    }
+
+    suspend fun updatePinHash(hash: String?) {
+        dataStore.edit { prefs ->
+            if (hash.isNullOrBlank()) prefs.remove(KEY_PIN_HASH)
+            else prefs[KEY_PIN_HASH] = hash
+        }
+    }
+
+    suspend fun restorePreferences(
+        dailyBudget: Double,
+        rolloverEnabled: Boolean,
+        budgetStartEpochDay: Long,
+        currency: String,
+        includeCreditsInBudget: Boolean
+    ) {
+        dataStore.edit { prefs ->
+            prefs[KEY_DAILY_BUDGET] = dailyBudget
+            prefs[KEY_ROLLOVER_ENABLED] = rolloverEnabled
+            prefs[KEY_BUDGET_START_EPOCH_DAY] = budgetStartEpochDay
+            prefs[KEY_CURRENCY] = currency
+            prefs[KEY_INCLUDE_CREDITS_IN_BUDGET] = includeCreditsInBudget
+        }
     }
 }

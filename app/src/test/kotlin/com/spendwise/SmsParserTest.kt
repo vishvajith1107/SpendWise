@@ -193,4 +193,32 @@ class SmsParserTest {
         val body = "Congrats! Pre-approved loan offer of Rs 500000 waiting on your Axis Bank A/c. Apply now!"
         assertNull(SmsParser.parse("AD-AXISBK-P", body, now))
     }
+
+    @Test
+    fun `Auto categorizes Swiggy debit SMS as FOOD`() {
+        val body = "Rs.349.00 debited from your HDFC Bank A/c XX4321 on 11-11-26 towards Swiggy via UPI Ref 668100112233."
+        val tx = SmsParser.parse("AD-HDFCBK-S", body, now)
+        assertNotNull(tx)
+        assertEquals(com.spendwise.domain.model.ExpenseCategory.FOOD, tx!!.category)
+        assertEquals("HDFC", tx.bank)
+    }
+
+    @Test
+    fun `Auto categorizes Uber debit SMS as TRANSPORT`() {
+        val body = "Your IDFC FIRST Bank A/c XX9911 is debited for Rs.185.50 towards Uber India. UPI:771122334455."
+        val tx = SmsParser.parse("JD-IDFCFB-S", body, now)
+        assertNotNull(tx)
+        assertEquals("IDFC FIRST", tx!!.bank)
+        assertEquals(com.spendwise.domain.model.ExpenseCategory.TRANSPORT, tx.category)
+    }
+
+    @Test
+    fun `Federal Bank credit SMS categorized as INCOME and detects bank`() {
+        val body = "Federal Bank: Rs 1200.00 credited to your A/c XX7788 via UPI Ref 998877665544 from Rahul."
+        val tx = SmsParser.parse("AX-FEDBNK-S", body, now)
+        assertNotNull(tx)
+        assertTrue(tx!!.isCredit)
+        assertEquals("Federal Bank", tx.bank)
+        assertEquals(com.spendwise.domain.model.ExpenseCategory.INCOME, tx.category)
+    }
 }

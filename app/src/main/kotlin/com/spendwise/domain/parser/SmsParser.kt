@@ -1,5 +1,6 @@
 package com.spendwise.domain.parser
 
+import com.spendwise.domain.categorizer.CategoryClassifier
 import com.spendwise.domain.model.Transaction
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -30,7 +31,15 @@ object SmsParser {
         for (parser in parsers) {
             if (parser.canHandle(sender, body)) {
                 val tx = parser.parse(sender, body, receivedAt)
-                if (tx != null && tx.amount > 0.0) return tx
+                if (tx != null && tx.amount > 0.0) {
+                    val category = CategoryClassifier.classify(
+                        merchant = tx.merchant,
+                        description = tx.description,
+                        rawSms = tx.rawSms,
+                        isCredit = tx.isCredit
+                    )
+                    return tx.copy(category = category)
+                }
             }
         }
         return null
@@ -84,7 +93,8 @@ internal object ParserUtils {
     private val KNOWN_BANK_TOKENS = listOf(
         "BANK", "BNK", "ICICI", "HDFC", "SBI", "AXIS", "KOTAK", "IDFC", "INDUS",
         "PNB", "BOI", "BOB", "YES", "CANARA", "FED", "UNION", "RBL", "CITI",
-        "HSBC", "SCB", "AU", "PAYTM", "AIRTEL", "JIO", "PAY"
+        "HSBC", "SCB", "AU", "PAYTM", "AIRTEL", "JIO", "PAY", "SLICE", "JUPITER",
+        "ONECARD", "AMEX"
     )
 
     private val DEBIT_KEYWORDS = listOf(
@@ -137,6 +147,17 @@ internal object ParserUtils {
             upperSender.contains("SBI") -> return "SBI"
             upperSender.contains("AXIS") -> return "Axis"
             upperSender.contains("KOTAK") -> return "Kotak"
+            upperSender.contains("IDFC") -> return "IDFC FIRST"
+            upperSender.contains("INDUS") -> return "IndusInd"
+            upperSender.contains("FED") -> return "Federal"
+            upperSender.contains("YES") -> return "YES Bank"
+            upperSender.contains("CANARA") -> return "Canara"
+            upperSender.contains("PNB") -> return "PNB"
+            upperSender.contains("BOB") || upperSender.contains("BARODA") -> return "Bank of Baroda"
+            upperSender.contains("AUBANK") || upperSender.contains("AUBNK") -> return "AU Bank"
+            upperSender.contains("ONECARD") -> return "OneCard"
+            upperSender.contains("JUPITER") -> return "Jupiter"
+            upperSender.contains("SLICE") -> return "Slice"
         }
         val upperBody = body.uppercase(Locale.ROOT)
         return when {
@@ -145,6 +166,13 @@ internal object ParserUtils {
             upperBody.contains("STATE BANK") || Regex("""\bSBI\b""").containsMatchIn(upperBody) -> "SBI"
             upperBody.contains("AXIS BANK") || Regex("""\bAXIS\b""").containsMatchIn(upperBody) -> "Axis"
             upperBody.contains("KOTAK BANK") || Regex("""\bKOTAK\b""").containsMatchIn(upperBody) -> "Kotak"
+            upperBody.contains("IDFC FIRST") || Regex("""\bIDFC\b""").containsMatchIn(upperBody) -> "IDFC FIRST"
+            upperBody.contains("INDUSIND") -> "IndusInd"
+            upperBody.contains("FEDERAL BANK") -> "Federal"
+            upperBody.contains("YES BANK") -> "YES Bank"
+            upperBody.contains("CANARA BANK") -> "Canara"
+            upperBody.contains("BANK OF BARODA") -> "Bank of Baroda"
+            upperBody.contains("ONECARD") -> "OneCard"
             else -> "Bank"
         }
     }

@@ -1,6 +1,8 @@
 package com.spendwise.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.spendwise.domain.categorizer.CategoryClassifier
+import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.Transaction
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -56,6 +60,12 @@ fun TransactionFormSheet(
     }
     var isCredit by remember(initialTransaction) {
         mutableStateOf(initialTransaction?.isCredit ?: false)
+    }
+    var category by remember(initialTransaction) {
+        mutableStateOf(initialTransaction?.category ?: ExpenseCategory.OTHER)
+    }
+    var categoryManuallyPicked by remember(initialTransaction) {
+        mutableStateOf(initialTransaction != null)
     }
     var includeInBudget by remember(initialTransaction) {
         mutableStateOf(
@@ -119,7 +129,14 @@ fun TransactionFormSheet(
             ) {
                 FilterChip(
                     selected = !isCredit,
-                    onClick = { isCredit = false },
+                    onClick = {
+                        isCredit = false
+                        if (!categoryManuallyPicked) {
+                            category = CategoryClassifier.classify(merchant, notes, isCredit = false)
+                        } else if (category == ExpenseCategory.INCOME) {
+                            category = CategoryClassifier.classify(merchant, notes, isCredit = false)
+                        }
+                    },
                     label = { Text("Expense (Debit)") },
                     leadingIcon = if (!isCredit) {
                         { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }
@@ -127,7 +144,12 @@ fun TransactionFormSheet(
                 )
                 FilterChip(
                     selected = isCredit,
-                    onClick = { isCredit = true },
+                    onClick = {
+                        isCredit = true
+                        if (!categoryManuallyPicked || category == ExpenseCategory.OTHER) {
+                            category = ExpenseCategory.INCOME
+                        }
+                    },
                     label = { Text("Credited (Income)") },
                     leadingIcon = if (isCredit) {
                         { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }
@@ -149,7 +171,12 @@ fun TransactionFormSheet(
 
             OutlinedTextField(
                 value = merchant,
-                onValueChange = { merchant = it },
+                onValueChange = {
+                    merchant = it
+                    if (!categoryManuallyPicked) {
+                        category = CategoryClassifier.classify(it, notes, isCredit = isCredit)
+                    }
+                },
                 label = {
                     Text(
                         if (isCredit) "Sender / Source Name (e.g. Refund, Rahul)"
@@ -165,6 +192,34 @@ fun TransactionFormSheet(
                     )
                 }
             )
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Category",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(ExpenseCategory.entries) { cat ->
+                        FilterChip(
+                            selected = category == cat,
+                            onClick = {
+                                category = cat
+                                categoryManuallyPicked = true
+                            },
+                            label = { Text(cat.displayName) },
+                            leadingIcon = {
+                                Icon(
+                                    cat.icon(),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (category == cat) MaterialTheme.colorScheme.primary else cat.tintColor()
+                                )
+                            }
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = notes,
@@ -345,7 +400,8 @@ fun TransactionFormSheet(
                                 dateTime = finalDateTime,
                                 date = selectedDate,
                                 isCredit = isCredit,
-                                includeInBudget = if (isCredit) includeInBudget else false
+                                includeInBudget = if (isCredit) includeInBudget else false,
+                                category = category
                             )
                         } else {
                             Transaction(
@@ -357,7 +413,8 @@ fun TransactionFormSheet(
                                 isManual = true,
                                 bank = "Manual",
                                 isCredit = isCredit,
-                                includeInBudget = if (isCredit) includeInBudget else false
+                                includeInBudget = if (isCredit) includeInBudget else false,
+                                category = category
                             )
                         }
                         onSave(saved)

@@ -5,11 +5,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +30,9 @@ fun TransactionItem(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val isDark = isSystemInDarkTheme()
     val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
-    val creditContainerColor = if (isDark) Color(0xFF1B3A1E) else Color(0xFFE8F5E9)
+    val catColor = transaction.category.tintColor()
+    val iconTint = if (transaction.isCredit) creditColor else catColor
+    val containerColor = iconTint.copy(alpha = if (isDark) 0.22f else 0.13f)
 
     Card(
         modifier = Modifier
@@ -50,25 +49,13 @@ fun TransactionItem(
             Surface(
                 modifier = Modifier.size(42.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = when {
-                    transaction.isCredit -> creditContainerColor
-                    transaction.isManual -> MaterialTheme.colorScheme.secondaryContainer
-                    else -> MaterialTheme.colorScheme.primaryContainer
-                }
+                color = containerColor
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = when {
-                            transaction.isCredit -> Icons.Default.ArrowDownward
-                            transaction.isManual -> Icons.Default.EditNote
-                            else -> Icons.Default.Sms
-                        },
-                        contentDescription = null,
-                        tint = when {
-                            transaction.isCredit -> creditColor
-                            transaction.isManual -> MaterialTheme.colorScheme.onSecondaryContainer
-                            else -> MaterialTheme.colorScheme.onPrimaryContainer
-                        },
+                        imageVector = transaction.category.icon(),
+                        contentDescription = transaction.category.displayName,
+                        tint = iconTint,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -84,15 +71,19 @@ fun TransactionItem(
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyLarge
                 )
-                val bankLabel = if (transaction.bank.isNotBlank() && transaction.bank != "Manual")
-                    " · ${transaction.bank}" else ""
+                val sourceTag = when {
+                    transaction.bank == "Recurring" -> " · Recurring"
+                    transaction.isManual -> " · Manual"
+                    transaction.bank.isNotBlank() -> " · ${transaction.bank}"
+                    else -> ""
+                }
                 val upiLabel = if (!transaction.upiRef.isNullOrBlank())
                     " · UPI:${transaction.upiRef.takeLast(4)}" else ""
                 val creditTag = if (transaction.isCredit) {
                     if (transaction.includeInBudget) " · Added to limit" else " · Excluded"
                 } else ""
                 Text(
-                    text = "${transaction.dateTime.format(timeFormatter)}$bankLabel$upiLabel$creditTag",
+                    text = "${transaction.category.displayName} · ${transaction.dateTime.format(timeFormatter)}$sourceTag$upiLabel$creditTag",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (transaction.isCredit && transaction.includeInBudget)
                         creditColor

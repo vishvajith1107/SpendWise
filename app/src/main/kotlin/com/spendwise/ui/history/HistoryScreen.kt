@@ -1,13 +1,18 @@
 package com.spendwise.ui.history
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -15,31 +20,62 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.ui.components.TransactionFormSheet
 import com.spendwise.ui.components.TransactionItem
+import com.spendwise.ui.components.icon
+import com.spendwise.ui.components.tintColor
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    onBack: () -> Unit,
+    onBack: (() -> Unit)? = null,
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     val dateFormatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy") }
     val creditColor = if (isSystemInDarkTheme()) Color(0xFF81C784) else Color(0xFF2E7D32)
+
+    val csvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(viewModel.buildCsvContent().toByteArray(Charsets.UTF_8))
+                }
+            }.onSuccess {
+                Toast.makeText(context, "Exported CSV successfully", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "Export failed: ${it.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Transaction History", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { csvLauncher.launch("spendwise_transactions_${LocalDate.now()}.csv") },
+                        enabled = uiState.filteredTransactions.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = "Export CSV")
                     }
                 }
             )
@@ -72,7 +108,7 @@ fun HistoryScreen(
                 OutlinedTextField(
                     value = uiState.searchQuery,
                     onValueChange = { viewModel.updateSearchQuery(it) },
-                    placeholder = { Text("Search merchant, bank, UPI ref, or amount") },
+                    placeholder = { Text("Search merchant, category, bank, or amount") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
                         if (uiState.searchQuery.isNotEmpty()) {
@@ -85,6 +121,31 @@ fun HistoryScreen(
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Type & Category Filter Row
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(HistoryTypeFilter.entries) { type ->
+                        FilterChip(
+                            selected = uiState.typeFilter == type,
+                            onClick = { viewModel.selectTypeFilter(type) },
+                            label = { Text(type.label) }
+                        )
+                    }
+                    items(ExpenseCategory.entries) { cat ->
+                        FilterChip(
+                            selected = uiState.selectedCategory == cat,
+                            onClick = {
+                                viewModel.selectCategory(
+                                    if (uiState.selectedCategory == cat) null else cat
+                                )
+                            },
+                            label = { Text(cat.displayName) },
+                            leadingIcon = {
+                                Icon(cat.icon(), null, Modifier.size(16.dp), tint = cat.tintColor())
+                            }
+                        )
+                    }
+                }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),

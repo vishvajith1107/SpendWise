@@ -15,5 +15,6 @@ data class Transaction(
     val isManual: Boolean = false,
     val bank: String = "ICICI",
     val isCredit: Boolean = false,
-    val includeInBudget: Boolean = false
+    val includeInBudget: Boolean = false,
+    val category: ExpenseCategory = ExpenseCategory.OTHER
 )

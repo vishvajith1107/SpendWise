@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
+import com.spendwise.data.db.RecurringRuleDao
 import com.spendwise.data.db.SpendWiseDatabase
 import com.spendwise.data.db.TransactionDao
 import dagger.Module
@@ -28,12 +29,16 @@ object AppModule {
             SpendWiseDatabase::class.java,
             "spendwise.db"
         )
-            .addMigrations(SpendWiseDatabase.MIGRATION_1_2)
+            .addMigrations(SpendWiseDatabase.MIGRATION_1_2, SpendWiseDatabase.MIGRATION_2_3)
             .build()
 
     @Provides
     @Singleton
     fun provideTransactionDao(db: SpendWiseDatabase): TransactionDao = db.transactionDao()
+
+    @Provides
+    @Singleton
+    fun provideRecurringRuleDao(db: SpendWiseDatabase): RecurringRuleDao = db.recurringRuleDao()
 
     @Provides
     @Singleton

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spendwise.data.repository.PreferencesRepository
+import com.spendwise.data.repository.RecurringRepository
 import com.spendwise.data.repository.TransactionRepository
 import com.spendwise.domain.budget.BudgetEngine
 import com.spendwise.domain.budget.BudgetState
@@ -19,6 +20,7 @@ import javax.inject.Inject
 data class DashboardUiState(
     val budgetState: BudgetState? = null,
     val todayTransactions: List<Transaction> = emptyList(),
+    val upcomingRecurringCount: Int = 0,
     val isLoading: Boolean = true,
     val showAddTransactionSheet: Boolean = false,
     val editingTransaction: Transaction? = null,
@@ -32,6 +34,7 @@ class DashboardViewModel @Inject constructor(
     private val app: Application,
     private val transactionRepository: TransactionRepository,
     private val preferencesRepository: PreferencesRepository,
+    private val recurringRepository: RecurringRepository,
     private val budgetEngine: BudgetEngine
 ) : ViewModel() {
 
@@ -43,19 +46,27 @@ class DashboardViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            recurringRepository.processDueAutoRules()
+        }
+        viewModelScope.launch {
             _currentDate
                 .flatMapLatest { today ->
                     combine(
                         transactionRepository.getTransactionsForDay(today),
                         preferencesRepository.userPreferences,
+                        recurringRepository.getAllRules(),
                         _showAddSheet,
                         _editingTransaction
-                    ) { transactions, prefs, showSheet, editingTx ->
+                    ) { transactions, prefs, rules, showSheet, editingTx ->
                         val budgetState = budgetEngine.calculateBudgetState(prefs, today)
+                        val upcomingDue = rules.count {
+                            it.isActive && !it.nextDueDate.isAfter(today.plusDays(3))
+                        }
                         BudgetWidgetUpdater.update(app)
                         DashboardUiState(
                             budgetState = budgetState,
                             todayTransactions = transactions,
+                            upcomingRecurringCount = upcomingDue,
                             isLoading = false,
                             showAddTransactionSheet = showSheet,
                             editingTransaction = editingTx,
@@ -76,6 +87,12 @@ class DashboardViewModel @Inject constructor(
         val now = LocalDate.now()
         if (_currentDate.value != now) {
             _currentDate.value = now
+        }
+        viewModelScope.launch {
+            val logged = recurringRepository.processDueAutoRules(now)
+            if (logged > 0) {
+                BudgetWidgetUpdater.update(app)
+            }
         }
     }
 

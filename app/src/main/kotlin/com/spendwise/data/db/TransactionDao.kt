@@ -30,6 +30,12 @@ interface TransactionDao {
     @Query("SELECT EXISTS(SELECT 1 FROM transactions WHERE upiRef = :upiRef LIMIT 1)")
     suspend fun existsByUpiRef(upiRef: String): Boolean
 
+    @Query("SELECT EXISTS(SELECT 1 FROM transactions WHERE dateEpochDay = :epochDay AND ABS(amount - :amount) < 0.001 AND merchant = :merchant LIMIT 1)")
+    suspend fun existsBySignature(epochDay: Long, amount: Double, merchant: String): Boolean
+
+    @Query("SELECT * FROM transactions ORDER BY dateTimeEpoch DESC")
+    suspend fun getAllTransactionsOnce(): List<TransactionEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(transaction: TransactionEntity): Long
 

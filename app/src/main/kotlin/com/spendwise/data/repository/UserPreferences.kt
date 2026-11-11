@@ -5,5 +5,7 @@ data class UserPreferences(
     val rolloverEnabled: Boolean = true,
     val budgetStartEpochDay: Long = 0L,    // The epoch day from which budget tracking began
     val currency: String = "₹",
-    val includeCreditsInBudget: Boolean = false
+    val includeCreditsInBudget: Boolean = false,
+    val themeMode: String = "SYSTEM",      // SYSTEM, LIGHT, DARK
+    val pinHash: String? = null
 )

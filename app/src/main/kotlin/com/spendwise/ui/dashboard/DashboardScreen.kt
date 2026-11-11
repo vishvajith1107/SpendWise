@@ -30,8 +30,9 @@ import kotlin.math.abs
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    onNavigateToHistory: () -> Unit,
-    onNavigateToSettings: () -> Unit,
+    onNavigateToAnalytics: () -> Unit,
+    onNavigateToRecurring: () -> Unit,
+    onNavigateToSupport: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -60,7 +61,7 @@ fun DashboardScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
-                                    "₹",
+                                    uiState.budgetState?.currency ?: "₹",
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     fontSize = 18.sp
@@ -72,11 +73,11 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToHistory) {
-                        Icon(Icons.Default.History, contentDescription = "Transaction History")
+                    IconButton(onClick = onNavigateToRecurring) {
+                        Icon(Icons.Default.EventRepeat, contentDescription = "Recurring Bills")
                     }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    IconButton(onClick = onNavigateToSupport) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Help & Support")
                     }
                 }
             )
@@ -112,6 +113,64 @@ fun DashboardScreen(
             item {
                 uiState.budgetState?.let { budget ->
                     BudgetSummaryCard(budget = budget)
+                }
+            }
+
+            // Quick Actions Row
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedCard(
+                        onClick = onNavigateToAnalytics,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Insights,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                "Analytics",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    OutlinedCard(
+                        onClick = onNavigateToRecurring,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.EventRepeat,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = if (uiState.upcomingRecurringCount > 0)
+                                    "Bills (${uiState.upcomingRecurringCount} due)"
+                                else "Recurring Bills",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
 
@@ -184,18 +243,6 @@ fun DashboardScreen(
                 }
             }
 
-            // Quick link to Full History
-            item {
-                OutlinedButton(
-                    onClick = onNavigateToHistory,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("View All Transaction History")
-                }
-            }
         }
     }
 

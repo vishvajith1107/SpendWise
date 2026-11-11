@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.TransactionRepository
+import com.spendwise.domain.export.CsvExportHelper
+import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.Transaction
 import com.spendwise.ui.widget.BudgetWidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,6 +14,18 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
+
+enum class HistoryTypeFilter(val label: String) {
+    ALL("All"),
+    DEBITS("Expenses"),
+    CREDITS("Credits")
+}
+
+data class HistoryFilter(
+    val searchQuery: String = "",
+    val typeFilter: HistoryTypeFilter = HistoryTypeFilter.ALL,
+    val category: ExpenseCategory? = null
+)
 
 data class DailyTransactionGroup(
     val date: LocalDate,
@@ -22,11 +36,14 @@ data class DailyTransactionGroup(
 
 data class HistoryUiState(
     val groups: List<DailyTransactionGroup> = emptyList(),
+    val filteredTransactions: List<Transaction> = emptyList(),
     val totalSpentAllTime: Double = 0.0,
     val totalCreditedAllTime: Double = 0.0,
     val totalCount: Int = 0,
     val currency: String = "₹",
     val searchQuery: String = "",
+    val typeFilter: HistoryTypeFilter = HistoryTypeFilter.ALL,
+    val selectedCategory: ExpenseCategory? = null,
     val editingTransaction: Transaction? = null,
     val defaultIncludeCreditsInBudget: Boolean = false,
     val isLoading: Boolean = true
@@ -39,27 +56,33 @@ class HistoryViewModel @Inject constructor(
     private val preferencesRepository: PreferencesRepository
 ) : ViewModel() {
 
-    private val _searchQuery = MutableStateFlow("")
+    private val _filter = MutableStateFlow(HistoryFilter())
     private val _editingTransaction = MutableStateFlow<Transaction?>(null)
 
     val uiState: StateFlow<HistoryUiState> = combine(
         transactionRepository.getAllTransactions(),
         preferencesRepository.userPreferences,
-        _searchQuery,
+        _filter,
         _editingTransaction
-    ) { transactions, prefs, query, editingTx ->
-        val trimmedQuery = query.trim()
-        val filtered = if (trimmedQuery.isEmpty()) {
-            transactions
-        } else {
-            transactions.filter { tx ->
-                tx.merchant.contains(trimmedQuery, ignoreCase = true) ||
-                    tx.description.contains(trimmedQuery, ignoreCase = true) ||
-                    tx.bank.contains(trimmedQuery, ignoreCase = true) ||
-                    (tx.upiRef?.contains(trimmedQuery, ignoreCase = true) == true) ||
-                    "%.2f".format(tx.amount).contains(trimmedQuery) ||
-                    (tx.isCredit && "credit".contains(trimmedQuery, ignoreCase = true))
+    ) { transactions, prefs, filter, editingTx ->
+        val trimmedQuery = filter.searchQuery.trim()
+        val filtered = transactions.filter { tx ->
+            val matchesType = when (filter.typeFilter) {
+                HistoryTypeFilter.ALL -> true
+                HistoryTypeFilter.DEBITS -> !tx.isCredit
+                HistoryTypeFilter.CREDITS -> tx.isCredit
             }
+            val matchesCategory = filter.category == null || tx.category == filter.category
+            val matchesSearch = trimmedQuery.isEmpty() ||
+                tx.merchant.contains(trimmedQuery, ignoreCase = true) ||
+                tx.description.contains(trimmedQuery, ignoreCase = true) ||
+                tx.category.displayName.contains(trimmedQuery, ignoreCase = true) ||
+                tx.bank.contains(trimmedQuery, ignoreCase = true) ||
+                (tx.upiRef?.contains(trimmedQuery, ignoreCase = true) == true) ||
+                "%.2f".format(tx.amount).contains(trimmedQuery) ||
+                (tx.isCredit && "credit".contains(trimmedQuery, ignoreCase = true))
+
+            matchesType && matchesCategory && matchesSearch
         }
 
         val groups = filtered
@@ -77,11 +100,14 @@ class HistoryViewModel @Inject constructor(
 
         HistoryUiState(
             groups = groups,
+            filteredTransactions = filtered,
             totalSpentAllTime = filtered.filter { !it.isCredit }.sumOf { it.amount },
             totalCreditedAllTime = filtered.filter { it.isCredit }.sumOf { it.amount },
             totalCount = filtered.size,
             currency = prefs.currency,
-            searchQuery = query,
+            searchQuery = filter.searchQuery,
+            typeFilter = filter.typeFilter,
+            selectedCategory = filter.category,
             editingTransaction = editingTx,
             defaultIncludeCreditsInBudget = prefs.includeCreditsInBudget,
             isLoading = false
@@ -93,8 +119,18 @@ class HistoryViewModel @Inject constructor(
     )
 
     fun updateSearchQuery(query: String) {
-        _searchQuery.value = query
+        _filter.update { it.copy(searchQuery = query) }
     }
+
+    fun selectTypeFilter(type: HistoryTypeFilter) {
+        _filter.update { it.copy(typeFilter = type) }
+    }
+
+    fun selectCategory(category: ExpenseCategory?) {
+        _filter.update { it.copy(category = category) }
+    }
+
+    fun buildCsvContent(): String = CsvExportHelper.generateCsv(uiState.value.filteredTransactions)
 
     fun startEditing(transaction: Transaction) {
         _editingTransaction.value = transaction
