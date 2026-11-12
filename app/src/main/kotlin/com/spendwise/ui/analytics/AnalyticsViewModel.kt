@@ -8,8 +8,10 @@ import com.spendwise.data.repository.TransactionRepository
 import com.spendwise.domain.analytics.AnalyticsCalculator
 import com.spendwise.domain.analytics.AnalyticsPeriod
 import com.spendwise.domain.analytics.AnalyticsSnapshot
+import com.spendwise.domain.model.BudgetPeriod
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import java.time.YearMonth
 import javax.inject.Inject
 
 data class AnalyticsUiState(
@@ -35,16 +37,22 @@ class AnalyticsViewModel @Inject constructor(
         categoryRepository.getAllCategories(),
         _selectedPeriod
     ) { transactions, prefs, categories, period ->
+        val effectiveDailyLimit = when (prefs.budgetPeriod) {
+            BudgetPeriod.DAILY -> prefs.dailyBudget
+            BudgetPeriod.WEEKLY -> prefs.dailyBudget / 7.0
+            BudgetPeriod.MONTHLY -> prefs.dailyBudget / YearMonth.now().lengthOfMonth().toDouble()
+            BudgetPeriod.NO_LIMIT -> 0.0
+        }
         val snapshot = AnalyticsCalculator.compute(
             allTransactions = transactions,
             period = period,
-            dailyBudget = prefs.dailyBudget,
+            dailyBudget = effectiveDailyLimit,
             categoriesByKey = categories.associateBy { it.key }
         )
         AnalyticsUiState(
             snapshot = snapshot,
             currency = prefs.currency,
-            dailyBudget = prefs.dailyBudget,
+            dailyBudget = effectiveDailyLimit,
             selectedPeriod = period,
             isLoading = false
         )

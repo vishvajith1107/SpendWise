@@ -277,7 +277,7 @@ fun TransactionFormSheet(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Include in Daily Limit",
+                                "Include in Budget Limit",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -310,12 +310,12 @@ fun TransactionFormSheet(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Spend From Daily Allowance",
+                                "Spend From Budget Allowance",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                if (countInAllowance) "Subtracts this expense from your daily limit"
+                                if (countInAllowance) "Subtracts this expense from your budget limit"
                                 else "Saved in History & Analytics only (allowance unchanged)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant

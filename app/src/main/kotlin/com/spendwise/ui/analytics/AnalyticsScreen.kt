@@ -425,14 +425,22 @@ private fun DailyTrendCard(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    "Limit: $currency${"%.0f".format(dailyBudget)}",
+                    if (dailyBudget > 0.0) {
+                        "Daily Target: $currency${"%.0f".format(dailyBudget)}"
+                    } else {
+                        "No Limit"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             if (series.isNotEmpty()) {
-                val maxVal = max(series.maxOf { it.spent }, dailyBudget).coerceAtLeast(1.0)
+                val maxVal = if (dailyBudget > 0.0) {
+                    max(series.maxOf { it.spent }, dailyBudget).coerceAtLeast(1.0)
+                } else {
+                    series.maxOf { it.spent }.coerceAtLeast(1.0)
+                }
 
                 Canvas(
                     modifier = Modifier
@@ -467,15 +475,17 @@ private fun DailyTrendCard(
                         }
                     }
 
-                    // Dashed horizontal reference line for daily limit
-                    val limitY = chartHeight * (1f - (dailyBudget / maxVal).toFloat().coerceIn(0f, 1f))
-                    drawLine(
-                        color = guideColor,
-                        start = Offset(0f, limitY),
-                        end = Offset(size.width, limitY),
-                        strokeWidth = 2.5f,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
-                    )
+                    // Dashed horizontal reference line when a limit is active
+                    if (dailyBudget > 0.0) {
+                        val limitY = chartHeight * (1f - (dailyBudget / maxVal).toFloat().coerceIn(0f, 1f))
+                        drawLine(
+                            color = guideColor,
+                            start = Offset(0f, limitY),
+                            end = Offset(size.width, limitY),
+                            strokeWidth = 2.5f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                        )
+                    }
                 }
 
                 Row(

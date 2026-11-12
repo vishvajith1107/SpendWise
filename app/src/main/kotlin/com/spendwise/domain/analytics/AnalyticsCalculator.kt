@@ -98,7 +98,7 @@ object AnalyticsCalculator {
                 date = day,
                 spent = spent,
                 credited = credited,
-                isOverLimit = spent > dailyBudget
+                isOverLimit = dailyBudget > 0.0 && spent > dailyBudget
             )
         }
 

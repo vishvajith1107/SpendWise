@@ -6,6 +6,7 @@ import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.Transaction
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 import java.time.LocalDate
@@ -126,5 +127,20 @@ class AnalyticsCalculatorTest {
         assertEquals(0xFF009688, first.colorHex)
         assertEquals("Dining Out", second.displayName)
         assertEquals(0xFF673AB7, second.colorHex)
+    }
+
+    @Test
+    fun `zero daily budget marks no days over limit`() {
+        val transactions = listOf(
+            tx(daysAgo = 0, amount = 450.0, merchant = "Groceries")
+        )
+        val snap = AnalyticsCalculator.compute(
+            allTransactions = transactions,
+            period = AnalyticsPeriod.SEVEN_DAYS,
+            dailyBudget = 0.0,
+            today = today
+        )
+        assertEquals(7, snap.daysUnderLimit)
+        assertFalse(snap.dailySeries.any { it.isOverLimit })
     }
 }

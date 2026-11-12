@@ -179,8 +179,8 @@ class HistoryViewModel @Inject constructor(
             val countsInBudget = !transaction.excludeFromBudget && (!transaction.isCredit || transaction.includeInBudget)
             if (countsInBudget) {
                 val prefs = preferencesRepository.userPreferences.first()
-                if (prefs.budgetStartEpochDay == 0L || transaction.date.toEpochDay() < prefs.budgetStartEpochDay) {
-                    preferencesRepository.updateBudgetStartDay(transaction.date.toEpochDay())
+                if (prefs.budgetStartEpochDay <= 0L) {
+                    preferencesRepository.ensureBudgetStartDayInitialized(transaction.date.toEpochDay())
                 }
             }
             BudgetWidgetUpdater.update(app)

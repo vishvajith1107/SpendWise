@@ -8,7 +8,7 @@ data class FaqItem(
 object SupportInfo {
     // Sample support address — replace with your dedicated support email before publishing
     const val SUPPORT_EMAIL = "support@spendwise.example"
-    const val APP_VERSION = "2.2"
+    const val APP_VERSION = "2.2.1"
     const val RELEASE_DOWNLOAD_URL = "https://github.com/vishvajith1107/SpendWise/releases/latest/download/SpendWise.apk"
     const val REPOSITORY_URL = "https://github.com/vishvajith1107/SpendWise"
 

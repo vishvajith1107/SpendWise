@@ -146,7 +146,7 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             transactionRepository.insertTransaction(transaction)
             categoryRepository.learnMerchantCategory(transaction.merchant, transaction.effectiveCategoryKey)
-            extendBudgetStartDayIfNeeded(transaction)
+            initializeBudgetStartDayIfNeeded(transaction)
             BudgetWidgetUpdater.update(app)
             hideAddSheet()
         }
@@ -156,18 +156,18 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             transactionRepository.updateTransaction(transaction)
             categoryRepository.learnMerchantCategory(transaction.merchant, transaction.effectiveCategoryKey)
-            extendBudgetStartDayIfNeeded(transaction)
+            initializeBudgetStartDayIfNeeded(transaction)
             BudgetWidgetUpdater.update(app)
             stopEditing()
         }
     }
 
-    private suspend fun extendBudgetStartDayIfNeeded(transaction: Transaction) {
+    private suspend fun initializeBudgetStartDayIfNeeded(transaction: Transaction) {
         val countsInBudget = !transaction.excludeFromBudget && (!transaction.isCredit || transaction.includeInBudget)
         if (!countsInBudget) return
         val prefs = preferencesRepository.userPreferences.first()
-        if (prefs.budgetStartEpochDay == 0L || transaction.date.toEpochDay() < prefs.budgetStartEpochDay) {
-            preferencesRepository.updateBudgetStartDay(transaction.date.toEpochDay())
+        if (prefs.budgetStartEpochDay <= 0L) {
+            preferencesRepository.ensureBudgetStartDayInitialized(transaction.date.toEpochDay())
         }
     }
 
