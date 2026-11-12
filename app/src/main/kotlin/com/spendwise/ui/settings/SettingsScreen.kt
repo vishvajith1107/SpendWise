@@ -497,11 +497,7 @@ fun SettingsScreen(
                         Text("Import Past Bank SMS", fontWeight = FontWeight.SemiBold)
                     }
                     Text(
-                        if (retentionDays > 0) {
-                            "Scan your SMS inbox for the last $retentionLabel offline to recover missed bank debits or credits on their original dates."
-                        } else {
-                            "Scan your full SMS inbox offline to recover missed bank debits or credits on their original dates."
-                        },
+                        "Scan your SMS inbox offline for any range (7 days, 1 month, 3 months, 1 year, or all SMS) to recover missed bank debits or credits on their original dates.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -525,7 +521,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (retentionDays > 0) "Scan $retentionLabel SMS" else "Scan All Bank SMS")
+                        Text("Fetch Past Bank SMS")
                     }
                 }
             }
@@ -885,23 +881,58 @@ fun SettingsScreen(
     }
 
     if (showSmsImportChoiceDialog) {
+        var selectedImportDays by remember(showSmsImportChoiceDialog, retentionDays) {
+            mutableStateOf(retentionDays)
+        }
+        val importOptions = listOf(
+            7 to "7 Days",
+            30 to "1 Month",
+            90 to "3 Months",
+            365 to "1 Year",
+            0 to "All SMS"
+        )
+        val expandsRetention = retentionDays > 0 && (selectedImportDays == 0 || selectedImportDays > retentionDays)
+
         AlertDialog(
             onDismissRequest = { showSmsImportChoiceDialog = false },
             title = { Text("Import Past Bank SMS", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        if (retentionDays > 0) {
-                            "Should imported transactions from the last $retentionLabel count against your budget allowance, or just be added to History & Analytics?"
-                        } else {
-                            "Should imported SMS transactions count against your budget allowance, or just be added to History & Analytics?"
-                        },
-                        style = MaterialTheme.typography.bodyMedium
+                        "Choose how far back to scan:",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        importOptions.forEach { (days, label) ->
+                            FilterChip(
+                                selected = selectedImportDays == days,
+                                onClick = { selectedImportDays = days },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                    if (expandsRetention) {
+                        Text(
+                            "Your data retention window will automatically expand so fetched older entries are kept.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Text(
+                        "Should imported transactions count against your budget allowance, or just be added to History & Analytics?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Button(
                         onClick = {
                             showSmsImportChoiceDialog = false
-                            viewModel.scanSmsInbox(countTowardsAllowance = false)
+                            viewModel.scanSmsInbox(
+                                countTowardsAllowance = false,
+                                daysBackOverride = selectedImportDays
+                            )
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -910,7 +941,10 @@ fun SettingsScreen(
                     OutlinedButton(
                         onClick = {
                             showSmsImportChoiceDialog = false
-                            viewModel.scanSmsInbox(countTowardsAllowance = true)
+                            viewModel.scanSmsInbox(
+                                countTowardsAllowance = true,
+                                daysBackOverride = selectedImportDays
+                            )
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {

@@ -44,14 +44,17 @@ class SmsInboxImporter @Inject constructor(
         countTowardsAllowance: Boolean = false
     ): SmsImportResult = withContext(Dispatchers.IO) {
         val prefs = preferencesRepository.userPreferences.first()
-        val effectiveDays = if (daysBack > 0) daysBack else 3650
         val learnedRules = categoryRepository.getLearnedMerchantMap()
         val zone = ZoneId.systemDefault()
-        val cutoffMillis = LocalDate.now()
-            .minusDays(effectiveDays.toLong())
-            .atStartOfDay(zone)
-            .toInstant()
-            .toEpochMilli()
+        val cutoffMillis = if (daysBack > 0) {
+            LocalDate.now()
+                .minusDays(daysBack.toLong())
+                .atStartOfDay(zone)
+                .toInstant()
+                .toEpochMilli()
+        } else {
+            0L
+        }
 
         var scannedCount = 0
         var parsedCount = 0

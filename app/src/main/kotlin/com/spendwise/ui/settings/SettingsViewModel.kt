@@ -142,12 +142,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun scanSmsInbox(countTowardsAllowance: Boolean = false) {
+    fun scanSmsInbox(
+        countTowardsAllowance: Boolean = false,
+        daysBackOverride: Int? = null
+    ) {
         if (_isBusy.value) return
         viewModelScope.launch {
             _isBusy.value = true
             try {
-                val daysBack = preferencesRepository.userPreferences.first().dataRetentionDays
+                val currentRetention = preferencesRepository.userPreferences.first().dataRetentionDays
+                val daysBack = daysBackOverride ?: currentRetention
+                if (currentRetention > 0 && (daysBack == 0 || daysBack > currentRetention)) {
+                    preferencesRepository.updateDataRetentionDays(daysBack)
+                }
                 val result = smsInboxImporter.importRecentSms(
                     daysBack = daysBack,
                     countTowardsAllowance = countTowardsAllowance
