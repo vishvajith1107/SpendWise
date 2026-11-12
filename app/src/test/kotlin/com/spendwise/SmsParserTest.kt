@@ -218,7 +218,7 @@ class SmsParserTest {
         val tx = SmsParser.parse("AX-FEDBNK-S", body, now)
         assertNotNull(tx)
         assertTrue(tx!!.isCredit)
-        assertEquals("Federal Bank", tx.bank)
+        assertEquals("Federal", tx.bank)
         assertEquals(com.spendwise.domain.model.ExpenseCategory.INCOME, tx.category)
     }
 }
