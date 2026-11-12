@@ -24,6 +24,7 @@ data class RecurringRule(
     val title: String,
     val amount: Double,
     val category: ExpenseCategory = ExpenseCategory.BILLS,
+    val customCategoryKey: String? = null,
     val isCredit: Boolean = false,
     val includeInBudget: Boolean = false,
     val frequency: RecurringFrequency = RecurringFrequency.MONTHLY,
@@ -31,4 +32,7 @@ data class RecurringRule(
     val autoLog: Boolean = true,
     val isActive: Boolean = true,
     val lastLoggedDate: LocalDate? = null
-)
+) {
+    val effectiveCategoryKey: String
+        get() = customCategoryKey ?: category.name
+}

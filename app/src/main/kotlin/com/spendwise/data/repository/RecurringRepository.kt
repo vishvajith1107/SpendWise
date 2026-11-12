@@ -130,7 +130,8 @@ class RecurringRepository @Inject constructor(
             bank = "Recurring",
             isCredit = rule.isCredit,
             includeInBudget = if (rule.isCredit) rule.includeInBudget else false,
-            category = rule.category
+            category = rule.category,
+            customCategoryKey = rule.customCategoryKey
         )
         return transactionRepository.importTransactionIfNew(tx)
     }

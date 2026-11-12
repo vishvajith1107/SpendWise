@@ -1,6 +1,6 @@
 package com.spendwise.data.db
 
-import com.spendwise.domain.model.ExpenseCategory
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.RecurringFrequency
 import com.spendwise.domain.model.RecurringRule
 import com.spendwise.domain.model.Transaction
@@ -12,6 +12,7 @@ import java.time.ZoneId
 fun TransactionEntity.toDomain(): Transaction {
     val zone = ZoneId.systemDefault()
     val dateTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(dateTimeEpoch), zone)
+    val (builtIn, customKey) = AppCategory.splitKey(category)
     return Transaction(
         id = id,
         amount = amount,
@@ -26,7 +27,8 @@ fun TransactionEntity.toDomain(): Transaction {
         isCredit = isCredit,
         includeInBudget = includeInBudget,
         excludeFromBudget = excludeFromBudget,
-        category = ExpenseCategory.fromStorageKey(category)
+        category = builtIn,
+        customCategoryKey = customKey
     )
 }
 
@@ -46,16 +48,18 @@ fun Transaction.toEntity(): TransactionEntity {
         isCredit = isCredit,
         includeInBudget = includeInBudget,
         excludeFromBudget = excludeFromBudget,
-        category = category.name
+        category = effectiveCategoryKey
     )
 }
 
-fun RecurringRuleEntity.toDomain(): RecurringRule =
-    RecurringRule(
+fun RecurringRuleEntity.toDomain(): RecurringRule {
+    val (builtIn, customKey) = AppCategory.splitKey(category)
+    return RecurringRule(
         id = id,
         title = title,
         amount = amount,
-        category = ExpenseCategory.fromStorageKey(category),
+        category = builtIn,
+        customCategoryKey = customKey,
         isCredit = isCredit,
         includeInBudget = includeInBudget,
         frequency = RecurringFrequency.fromStorageKey(frequency),
@@ -64,13 +68,14 @@ fun RecurringRuleEntity.toDomain(): RecurringRule =
         isActive = isActive,
         lastLoggedDate = lastLoggedEpochDay?.let { LocalDate.ofEpochDay(it) }
     )
+}
 
 fun RecurringRule.toEntity(): RecurringRuleEntity =
     RecurringRuleEntity(
         id = id,
         title = title,
         amount = amount,
-        category = category.name,
+        category = effectiveCategoryKey,
         isCredit = isCredit,
         includeInBudget = includeInBudget,
         frequency = frequency.name,
@@ -78,4 +83,26 @@ fun RecurringRule.toEntity(): RecurringRuleEntity =
         autoLog = autoLog,
         isActive = isActive,
         lastLoggedEpochDay = lastLoggedDate?.toEpochDay()
+    )
+
+fun CategoryEntity.toDomain(): AppCategory =
+    AppCategory(
+        key = key,
+        displayName = displayName,
+        colorHex = colorHex,
+        iconKey = iconKey,
+        isCreditCategory = isCreditCategory,
+        isBuiltIn = isBuiltIn,
+        sortOrder = sortOrder
+    )
+
+fun AppCategory.toEntity(): CategoryEntity =
+    CategoryEntity(
+        key = key,
+        displayName = displayName,
+        colorHex = colorHex,
+        iconKey = iconKey,
+        isCreditCategory = isCreditCategory,
+        isBuiltIn = isBuiltIn,
+        sortOrder = sortOrder
     )

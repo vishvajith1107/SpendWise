@@ -53,4 +53,7 @@ interface TransactionDao {
 
     @Query("SELECT MIN(dateEpochDay) FROM transactions WHERE excludeFromBudget = 0")
     suspend fun getEarliestEpochDay(): Long?
+
+    @Query("UPDATE transactions SET category = :newKey WHERE category = :oldKey")
+    suspend fun reassignCategory(oldKey: String, newKey: String = "OTHER")
 }

@@ -2,6 +2,7 @@ package com.spendwise
 
 import com.spendwise.domain.analytics.AnalyticsCalculator
 import com.spendwise.domain.analytics.AnalyticsPeriod
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.Transaction
 import org.junit.Assert.assertEquals
@@ -85,5 +86,45 @@ class AnalyticsCalculatorTest {
         assertEquals(1, snap.daysUnderLimit)
         assertEquals(null, snap.highestSpendDay)
         assertEquals(0, snap.categoryBreakdown.size)
+    }
+
+    @Test
+    fun `groups custom categories and applies renamed built-in styling`() {
+        val customPet = AppCategory(
+            key = "CUSTOM_PET",
+            displayName = "Pets",
+            colorHex = 0xFF009688,
+            iconKey = "PETS",
+            isBuiltIn = false
+        )
+        val renamedFood = AppCategory.fromBuiltIn(ExpenseCategory.FOOD).copy(
+            displayName = "Dining Out",
+            colorHex = 0xFF673AB7
+        )
+        val transactions = listOf(
+            tx(daysAgo = 0, amount = 300.0, merchant = "Vet", category = ExpenseCategory.OTHER)
+                .copy(customCategoryKey = "CUSTOM_PET"),
+            tx(daysAgo = 0, amount = 100.0, merchant = "Cafe", category = ExpenseCategory.FOOD)
+        )
+
+        val snap = AnalyticsCalculator.compute(
+            allTransactions = transactions,
+            period = AnalyticsPeriod.SEVEN_DAYS,
+            dailyBudget = 500.0,
+            today = today,
+            categoriesByKey = mapOf(
+                "CUSTOM_PET" to customPet,
+                "FOOD" to renamedFood
+            )
+        )
+
+        assertEquals(2, snap.categoryBreakdown.size)
+        val first = snap.categoryBreakdown[0]
+        val second = snap.categoryBreakdown[1]
+        assertEquals("CUSTOM_PET", first.categoryKey)
+        assertEquals("Pets", first.displayName)
+        assertEquals(0xFF009688, first.colorHex)
+        assertEquals("Dining Out", second.displayName)
+        assertEquals(0xFF673AB7, second.colorHex)
     }
 }

@@ -17,5 +17,9 @@ data class Transaction(
     val isCredit: Boolean = false,
     val includeInBudget: Boolean = false,
     val excludeFromBudget: Boolean = false,
-    val category: ExpenseCategory = ExpenseCategory.OTHER
-)
+    val category: ExpenseCategory = ExpenseCategory.OTHER,
+    val customCategoryKey: String? = null
+) {
+    val effectiveCategoryKey: String
+        get() = customCategoryKey ?: category.name
+}

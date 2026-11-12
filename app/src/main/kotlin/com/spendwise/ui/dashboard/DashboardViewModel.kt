@@ -3,11 +3,13 @@ package com.spendwise.ui.dashboard
 import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spendwise.data.repository.CategoryRepository
 import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.RecurringRepository
 import com.spendwise.data.repository.TransactionRepository
 import com.spendwise.domain.budget.BudgetEngine
 import com.spendwise.domain.budget.BudgetState
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.Transaction
 import com.spendwise.ui.widget.BudgetWidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +22,7 @@ import javax.inject.Inject
 data class DashboardUiState(
     val budgetState: BudgetState? = null,
     val todayTransactions: List<Transaction> = emptyList(),
+    val categories: List<AppCategory> = emptyList(),
     val upcomingRecurringCount: Int = 0,
     val isLoading: Boolean = true,
     val showAddTransactionSheet: Boolean = false,
@@ -35,6 +38,7 @@ class DashboardViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val preferencesRepository: PreferencesRepository,
     private val recurringRepository: RecurringRepository,
+    private val categoryRepository: CategoryRepository,
     private val budgetEngine: BudgetEngine
 ) : ViewModel() {
 
@@ -52,12 +56,17 @@ class DashboardViewModel @Inject constructor(
             _currentDate
                 .flatMapLatest { today ->
                     combine(
-                        transactionRepository.getTransactionsForDay(today),
-                        preferencesRepository.userPreferences,
-                        recurringRepository.getAllRules(),
+                        combine(
+                            transactionRepository.getTransactionsForDay(today),
+                            preferencesRepository.userPreferences,
+                            recurringRepository.getAllRules(),
+                            categoryRepository.getAllCategories()
+                        ) { txs, prefs, rules, cats -> Triple(txs, prefs, rules to cats) },
                         _showAddSheet,
                         _editingTransaction
-                    ) { transactions, prefs, rules, showSheet, editingTx ->
+                    ) { data, showSheet, editingTx ->
+                        val (transactions, prefs, rulesAndCats) = data
+                        val (rules, categories) = rulesAndCats
                         val budgetState = budgetEngine.calculateBudgetState(prefs, today)
                         val upcomingDue = rules.count {
                             it.isActive && !it.nextDueDate.isAfter(today.plusDays(3))
@@ -66,6 +75,7 @@ class DashboardViewModel @Inject constructor(
                         DashboardUiState(
                             budgetState = budgetState,
                             todayTransactions = transactions,
+                            categories = categories,
                             upcomingRecurringCount = upcomingDue,
                             isLoading = false,
                             showAddTransactionSheet = showSheet,
@@ -80,6 +90,18 @@ class DashboardViewModel @Inject constructor(
                 .collect { state ->
                     _uiState.value = state
                 }
+        }
+    }
+
+    fun createCustomCategory(
+        name: String,
+        colorHex: Long,
+        iconKey: String,
+        onCreated: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val created = categoryRepository.createCustomCategory(name, colorHex, iconKey)
+            onCreated(created.key)
         }
     }
 

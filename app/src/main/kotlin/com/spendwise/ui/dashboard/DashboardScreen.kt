@@ -237,6 +237,7 @@ fun DashboardScreen(
                     TransactionItem(
                         transaction = transaction,
                         currency = uiState.budgetState?.currency ?: "₹",
+                        category = uiState.categories.firstOrNull { it.key == transaction.effectiveCategoryKey },
                         onClick = { viewModel.startEditing(transaction) },
                         onDelete = { viewModel.deleteTransaction(transaction) }
                     )
@@ -250,6 +251,8 @@ fun DashboardScreen(
         TransactionFormSheet(
             currency = uiState.budgetState?.currency ?: "₹",
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
+            categories = uiState.categories,
+            onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.hideAddSheet() },
             onSave = { tx -> viewModel.saveManualTransaction(tx) }
         )
@@ -260,6 +263,8 @@ fun DashboardScreen(
             currency = uiState.budgetState?.currency ?: "₹",
             initialTransaction = editing,
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
+            categories = uiState.categories,
+            onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.stopEditing() },
             onSave = { updated -> viewModel.updateTransaction(updated) },
             onDelete = { toDelete -> viewModel.deleteTransaction(toDelete) }

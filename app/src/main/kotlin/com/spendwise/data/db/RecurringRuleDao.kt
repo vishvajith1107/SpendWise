@@ -23,4 +23,7 @@ interface RecurringRuleDao {
 
     @Query("DELETE FROM recurring_rules WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("UPDATE recurring_rules SET category = :newKey WHERE category = :oldKey")
+    suspend fun reassignCategory(oldKey: String, newKey: String = "OTHER")
 }

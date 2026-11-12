@@ -530,7 +530,7 @@ private fun CategoryBreakdownCard(
                     categories.forEach { catSpend ->
                         val sweep = ((catSpend.percentage / 100f) * 360f).coerceAtLeast(1.5f)
                         drawArc(
-                            color = catSpend.category.tintColor(),
+                            color = androidx.compose.ui.graphics.Color(catSpend.colorHex),
                             startAngle = startAngle,
                             sweepAngle = sweep,
                             useCenter = false,
@@ -556,7 +556,7 @@ private fun CategoryBreakdownCard(
             }
 
             categories.forEach { catSpend ->
-                val catColor = catSpend.category.tintColor()
+                val catColor = androidx.compose.ui.graphics.Color(catSpend.colorHex)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -575,7 +575,7 @@ private fun CategoryBreakdownCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    catSpend.category.icon(),
+                                    com.spendwise.ui.components.iconByKey(catSpend.iconKey),
                                     contentDescription = null,
                                     tint = catColor,
                                     modifier = Modifier.size(16.dp)
@@ -583,7 +583,7 @@ private fun CategoryBreakdownCard(
                             }
                             Column {
                                 Text(
-                                    catSpend.category.displayName,
+                                    catSpend.displayName,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )

@@ -1,8 +1,10 @@
 package com.spendwise.domain.export
 
+import com.spendwise.data.repository.CategoryRepository
 import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.RecurringRepository
 import com.spendwise.data.repository.TransactionRepository
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.RecurringFrequency
 import com.spendwise.domain.model.RecurringRule
@@ -27,12 +29,14 @@ data class BackupRestoreSummary(
 class BackupRestoreHelper @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val recurringRepository: RecurringRepository,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val categoryRepository: CategoryRepository
 ) {
     suspend fun createJsonBackup(): String {
         val prefs = preferencesRepository.userPreferences.first()
         val transactions = transactionRepository.getAllTransactionsSnapshot()
         val rules = recurringRepository.getAllRulesSnapshot()
+        val categories = categoryRepository.getAllCategoriesSnapshot()
         val zone = ZoneId.systemDefault()
 
         val root = JSONObject().apply {
@@ -64,7 +68,21 @@ class BackupRestoreHelper @Inject constructor(
                         put("isCredit", tx.isCredit)
                         put("includeInBudget", tx.includeInBudget)
                         put("excludeFromBudget", tx.excludeFromBudget)
-                        put("category", tx.category.name)
+                        put("category", tx.effectiveCategoryKey)
+                    })
+                }
+            })
+
+            put("categories", JSONArray().apply {
+                for (cat in categories) {
+                    put(JSONObject().apply {
+                        put("key", cat.key)
+                        put("displayName", cat.displayName)
+                        put("colorHex", cat.colorHex)
+                        put("iconKey", cat.iconKey)
+                        put("isCreditCategory", cat.isCreditCategory)
+                        put("isBuiltIn", cat.isBuiltIn)
+                        put("sortOrder", cat.sortOrder)
                     })
                 }
             })
@@ -74,7 +92,7 @@ class BackupRestoreHelper @Inject constructor(
                     put(JSONObject().apply {
                         put("title", rule.title)
                         put("amount", rule.amount)
-                        put("category", rule.category.name)
+                        put("category", rule.effectiveCategoryKey)
                         put("isCredit", rule.isCredit)
                         put("includeInBudget", rule.includeInBudget)
                         put("frequency", rule.frequency.name)
@@ -108,6 +126,25 @@ class BackupRestoreHelper @Inject constructor(
             }
         }
 
+        val catArray = root.optJSONArray("categories") ?: JSONArray()
+        for (i in 0 until catArray.length()) {
+            val obj = catArray.getJSONObject(i)
+            val key = obj.optString("key").trim()
+            val name = obj.optString("displayName").trim()
+            if (key.isBlank() || name.isBlank()) continue
+            categoryRepository.saveCategory(
+                AppCategory(
+                    key = key,
+                    displayName = name,
+                    colorHex = obj.optLong("colorHex", 0xFF5D4037),
+                    iconKey = obj.optString("iconKey", "CATEGORY"),
+                    isCreditCategory = obj.optBoolean("isCreditCategory", false),
+                    isBuiltIn = obj.optBoolean("isBuiltIn", false),
+                    sortOrder = obj.optInt("sortOrder", i)
+                )
+            )
+        }
+
         var txImported = 0
         var txSkipped = 0
         val txArray = root.optJSONArray("transactions") ?: JSONArray()
@@ -121,6 +158,7 @@ class BackupRestoreHelper @Inject constructor(
             } else {
                 date.atStartOfDay()
             }
+            val (txBuiltInCat, txCustomCatKey) = AppCategory.splitKey(obj.optString("category"))
             val tx = Transaction(
                 amount = obj.getDouble("amount"),
                 merchant = obj.optString("merchant", "Transaction"),
@@ -134,7 +172,8 @@ class BackupRestoreHelper @Inject constructor(
                 isCredit = obj.optBoolean("isCredit", false),
                 includeInBudget = obj.optBoolean("includeInBudget", false),
                 excludeFromBudget = obj.optBoolean("excludeFromBudget", false),
-                category = ExpenseCategory.fromStorageKey(obj.optString("category"))
+                category = txBuiltInCat,
+                customCategoryKey = txCustomCatKey
             )
             if (tx.amount > 0.0) {
                 if (transactionRepository.importTransactionIfNew(tx)) txImported++
@@ -158,11 +197,13 @@ class BackupRestoreHelper @Inject constructor(
                     it.frequency == freq
             }
             if (!alreadyExists) {
+                val (ruleBuiltInCat, ruleCustomKey) = AppCategory.splitKey(obj.optString("category"))
                 recurringRepository.saveRule(
                     RecurringRule(
                         title = title,
                         amount = amount,
-                        category = ExpenseCategory.fromStorageKey(obj.optString("category")),
+                        category = ruleBuiltInCat,
+                        customCategoryKey = ruleCustomKey,
                         isCredit = obj.optBoolean("isCredit", false),
                         includeInBudget = obj.optBoolean("includeInBudget", false),
                         frequency = freq,

@@ -1,5 +1,6 @@
 package com.spendwise.domain.analytics
 
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.Transaction
 import java.time.LocalDate
@@ -16,7 +17,11 @@ data class CategorySpend(
     val category: ExpenseCategory,
     val amount: Double,
     val percentage: Float,
-    val count: Int
+    val count: Int,
+    val categoryKey: String = category.name,
+    val displayName: String = category.displayName,
+    val colorHex: Long = category.colorHex,
+    val iconKey: String = AppCategory.defaultIconKey(category)
 )
 
 data class DailySpendPoint(
@@ -60,7 +65,8 @@ object AnalyticsCalculator {
         allTransactions: List<Transaction>,
         period: AnalyticsPeriod,
         dailyBudget: Double,
-        today: LocalDate = LocalDate.now()
+        today: LocalDate = LocalDate.now(),
+        categoriesByKey: Map<String, AppCategory> = emptyMap()
     ): AnalyticsSnapshot {
         val startDate = when (period) {
             AnalyticsPeriod.SEVEN_DAYS -> today.minusDays(6)
@@ -110,14 +116,19 @@ object AnalyticsCalculator {
             ?.let { it.date to it.spent }
 
         val categoryBreakdown = if (totalSpent > 0.0) {
-            debits.groupBy { it.category }
-                .map { (cat, list) ->
+            debits.groupBy { it.effectiveCategoryKey }
+                .map { (key, list) ->
+                    val resolved = AppCategory.resolve(key, categoriesByKey)
                     val sum = list.sumOf { it.amount }
                     CategorySpend(
-                        category = cat,
+                        category = ExpenseCategory.fromStorageKey(key),
                         amount = sum,
                         percentage = ((sum / totalSpent) * 100.0).toFloat(),
-                        count = list.size
+                        count = list.size,
+                        categoryKey = resolved.key,
+                        displayName = resolved.displayName,
+                        colorHex = resolved.colorHex,
+                        iconKey = resolved.iconKey
                     )
                 }
                 .sortedByDescending { it.amount }

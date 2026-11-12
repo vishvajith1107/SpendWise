@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.spendwise.domain.categorizer.CategoryClassifier
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.Transaction
 import java.time.LocalDate
@@ -41,6 +42,8 @@ fun TransactionFormSheet(
     currency: String,
     initialTransaction: Transaction? = null,
     defaultIncludeCreditsInBudget: Boolean = false,
+    categories: List<AppCategory> = AppCategory.builtInDefaults(),
+    onCreateCategory: ((name: String, colorHex: Long, iconKey: String, onCreated: (String) -> Unit) -> Unit)? = null,
     onDismiss: () -> Unit,
     onSave: (Transaction) -> Unit,
     onDelete: ((Transaction) -> Unit)? = null
@@ -61,12 +64,13 @@ fun TransactionFormSheet(
     var isCredit by remember(initialTransaction) {
         mutableStateOf(initialTransaction?.isCredit ?: false)
     }
-    var category by remember(initialTransaction) {
-        mutableStateOf(initialTransaction?.category ?: ExpenseCategory.OTHER)
+    var selectedCategoryKey by remember(initialTransaction) {
+        mutableStateOf(initialTransaction?.effectiveCategoryKey ?: ExpenseCategory.OTHER.name)
     }
     var categoryManuallyPicked by remember(initialTransaction) {
         mutableStateOf(initialTransaction != null)
     }
+    var showNewCategoryDialog by remember { mutableStateOf(false) }
     var includeInBudget by remember(initialTransaction) {
         mutableStateOf(
             if (initialTransaction != null && initialTransaction.isCredit) {
@@ -134,10 +138,8 @@ fun TransactionFormSheet(
                     selected = !isCredit,
                     onClick = {
                         isCredit = false
-                        if (!categoryManuallyPicked) {
-                            category = CategoryClassifier.classify(merchant, notes, isCredit = false)
-                        } else if (category == ExpenseCategory.INCOME) {
-                            category = CategoryClassifier.classify(merchant, notes, isCredit = false)
+                        if (!categoryManuallyPicked || selectedCategoryKey == ExpenseCategory.INCOME.name) {
+                            selectedCategoryKey = CategoryClassifier.classify(merchant, notes, isCredit = false).name
                         }
                     },
                     label = { Text("Expense (Debit)") },
@@ -149,8 +151,8 @@ fun TransactionFormSheet(
                     selected = isCredit,
                     onClick = {
                         isCredit = true
-                        if (!categoryManuallyPicked || category == ExpenseCategory.OTHER) {
-                            category = ExpenseCategory.INCOME
+                        if (!categoryManuallyPicked || selectedCategoryKey == ExpenseCategory.OTHER.name) {
+                            selectedCategoryKey = ExpenseCategory.INCOME.name
                         }
                     },
                     label = { Text("Credited (Income)") },
@@ -177,7 +179,7 @@ fun TransactionFormSheet(
                 onValueChange = {
                     merchant = it
                     if (!categoryManuallyPicked) {
-                        category = CategoryClassifier.classify(it, notes, isCredit = isCredit)
+                        selectedCategoryKey = CategoryClassifier.classify(it, notes, isCredit = isCredit).name
                     }
                 },
                 label = {
@@ -203,11 +205,11 @@ fun TransactionFormSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(ExpenseCategory.entries) { cat ->
+                    items(categories, key = { it.key }) { cat ->
                         FilterChip(
-                            selected = category == cat,
+                            selected = selectedCategoryKey == cat.key,
                             onClick = {
-                                category = cat
+                                selectedCategoryKey = cat.key
                                 categoryManuallyPicked = true
                             },
                             label = { Text(cat.displayName) },
@@ -216,10 +218,26 @@ fun TransactionFormSheet(
                                     cat.icon(),
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp),
-                                    tint = if (category == cat) MaterialTheme.colorScheme.primary else cat.tintColor()
+                                    tint = if (selectedCategoryKey == cat.key) MaterialTheme.colorScheme.primary else cat.tintColor()
                                 )
                             }
                         )
+                    }
+                    if (onCreateCategory != null) {
+                        item(key = "add_new_category") {
+                            FilterChip(
+                                selected = false,
+                                onClick = { showNewCategoryDialog = true },
+                                label = { Text("New") },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -428,6 +446,7 @@ fun TransactionFormSheet(
                             ?: if (selectedDate == today) now.toLocalTime() else LocalTime.NOON
                         val finalDateTime = selectedDate.atTime(preservedTime)
 
+                        val (resolvedCategory, customCategoryKey) = AppCategory.splitKey(selectedCategoryKey)
                         val saved = if (initialTransaction != null) {
                             initialTransaction.copy(
                                 amount = parsedAmount,
@@ -438,7 +457,8 @@ fun TransactionFormSheet(
                                 isCredit = isCredit,
                                 includeInBudget = if (isCredit) includeInBudget else false,
                                 excludeFromBudget = if (isCredit) false else !countInAllowance,
-                                category = category
+                                category = resolvedCategory,
+                                customCategoryKey = customCategoryKey
                             )
                         } else {
                             Transaction(
@@ -452,7 +472,8 @@ fun TransactionFormSheet(
                                 isCredit = isCredit,
                                 includeInBudget = if (isCredit) includeInBudget else false,
                                 excludeFromBudget = if (isCredit) false else !countInAllowance,
-                                category = category
+                                category = resolvedCategory,
+                                customCategoryKey = customCategoryKey
                             )
                         }
                         onSave(saved)
@@ -466,6 +487,20 @@ fun TransactionFormSheet(
                 }
             }
         }
+    }
+
+    if (showNewCategoryDialog && onCreateCategory != null) {
+        CategoryEditorDialog(
+            initialCategory = null,
+            onDismiss = { showNewCategoryDialog = false },
+            onSave = { name, colorHex, iconKey ->
+                showNewCategoryDialog = false
+                onCreateCategory(name, colorHex, iconKey) { createdKey ->
+                    selectedCategoryKey = createdKey
+                    categoryManuallyPicked = true
+                }
+            }
+        )
     }
 
     if (showDeleteConfirm && initialTransaction != null && onDelete != null) {

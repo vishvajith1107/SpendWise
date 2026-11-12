@@ -11,18 +11,22 @@ object CsvExportHelper {
     private const val HEADER =
         "Date,Time,Type,Merchant,Category,Amount,IncludedInDailyLimit,Bank,Source,UPIReference,Description"
 
-    fun generateCsv(transactions: List<Transaction>): String {
+    fun generateCsv(
+        transactions: List<Transaction>,
+        categoryNamesByKey: Map<String, String> = emptyMap()
+    ): String {
         val sb = StringBuilder()
         sb.appendLine(HEADER)
         for (tx in transactions) {
             val type = if (tx.isCredit) "Credit" else "Debit"
             val source = if (tx.isManual) "Manual" else "Auto/SMS"
+            val catName = categoryNamesByKey[tx.effectiveCategoryKey] ?: tx.category.displayName
             val fields = listOf(
                 tx.date.format(DATE_FMT),
                 tx.dateTime.format(TIME_FMT),
                 type,
                 tx.merchant,
-                tx.category.displayName,
+                catName,
                 String.format(Locale.US, "%.2f", tx.amount),
                 if (tx.isCredit) tx.includeInBudget.toString() else "N/A",
                 tx.bank,

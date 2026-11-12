@@ -3,8 +3,10 @@ package com.spendwise.ui.recurring
 import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spendwise.data.repository.CategoryRepository
 import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.RecurringRepository
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.RecurringRule
 import com.spendwise.ui.widget.BudgetWidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,6 +16,7 @@ import javax.inject.Inject
 
 data class RecurringUiState(
     val rules: List<RecurringRule> = emptyList(),
+    val categories: List<AppCategory> = emptyList(),
     val currency: String = "₹",
     val defaultIncludeCreditsInBudget: Boolean = false,
     val editingRule: RecurringRule? = null,
@@ -25,6 +28,7 @@ data class RecurringUiState(
 class RecurringViewModel @Inject constructor(
     private val app: Application,
     private val recurringRepository: RecurringRepository,
+    private val categoryRepository: CategoryRepository,
     preferencesRepository: PreferencesRepository
 ) : ViewModel() {
 
@@ -33,14 +37,19 @@ class RecurringViewModel @Inject constructor(
     private val _statusMessage = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<RecurringUiState> = combine(
-        recurringRepository.getAllRules(),
-        preferencesRepository.userPreferences,
+        combine(
+            recurringRepository.getAllRules(),
+            categoryRepository.getAllCategories(),
+            preferencesRepository.userPreferences
+        ) { rules, cats, prefs -> Triple(rules, cats, prefs) },
         _editingRule,
         _showAddSheet,
         _statusMessage
-    ) { rules, prefs, editing, showAdd, msg ->
+    ) { data, editing, showAdd, msg ->
+        val (rules, categories, prefs) = data
         RecurringUiState(
             rules = rules,
+            categories = categories,
             currency = prefs.currency,
             defaultIncludeCreditsInBudget = prefs.includeCreditsInBudget,
             editingRule = editing,
@@ -95,6 +104,18 @@ class RecurringViewModel @Inject constructor(
         viewModelScope.launch {
             recurringRepository.deleteRule(rule)
             dismissSheet()
+        }
+    }
+
+    fun createCustomCategory(
+        name: String,
+        colorHex: Long,
+        iconKey: String,
+        onCreated: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val created = categoryRepository.createCustomCategory(name, colorHex, iconKey)
+            onCreated(created.key)
         }
     }
 

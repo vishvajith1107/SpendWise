@@ -111,7 +111,8 @@ fun RecurringScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(uiState.rules, key = { it.id }) { rule ->
-                    val catColor = if (rule.isCredit) creditColor else rule.category.tintColor()
+                    val resolvedCategory = uiState.categories.firstOrNull { it.key == rule.effectiveCategoryKey }
+                    val catColor = if (rule.isCredit) creditColor else (resolvedCategory?.tintColor() ?: rule.category.tintColor())
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -133,7 +134,7 @@ fun RecurringScreen(
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            rule.category.icon(),
+                                            resolvedCategory?.icon() ?: rule.category.icon(),
                                             contentDescription = null,
                                             tint = catColor,
                                             modifier = Modifier.size(20.dp)
@@ -195,6 +196,8 @@ fun RecurringScreen(
             currency = uiState.currency,
             initialRule = uiState.editingRule,
             defaultIncludeCredits = uiState.defaultIncludeCreditsInBudget,
+            categories = uiState.categories,
+            onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.dismissSheet() },
             onSave = { viewModel.saveRule(it) },
             onDelete = uiState.editingRule?.let { r -> { viewModel.deleteRule(r) } }
@@ -208,6 +211,8 @@ private fun RecurringRuleFormSheet(
     currency: String,
     initialRule: RecurringRule?,
     defaultIncludeCredits: Boolean,
+    categories: List<com.spendwise.domain.model.AppCategory> = com.spendwise.domain.model.AppCategory.builtInDefaults(),
+    onCreateCategory: ((name: String, colorHex: Long, iconKey: String, onCreated: (String) -> Unit) -> Unit)? = null,
     onDismiss: () -> Unit,
     onSave: (RecurringRule) -> Unit,
     onDelete: (() -> Unit)?
@@ -231,9 +236,10 @@ private fun RecurringRuleFormSheet(
             else defaultIncludeCredits
         )
     }
-    var category by remember(initialRule) {
-        mutableStateOf(initialRule?.category ?: ExpenseCategory.BILLS)
+    var selectedCategoryKey by remember(initialRule) {
+        mutableStateOf(initialRule?.effectiveCategoryKey ?: ExpenseCategory.BILLS.name)
     }
+    var showNewCategoryDialog by remember { mutableStateOf(false) }
     var frequency by remember(initialRule) {
         mutableStateOf(initialRule?.frequency ?: RecurringFrequency.MONTHLY)
     }
@@ -261,7 +267,7 @@ private fun RecurringRuleFormSheet(
                     selected = !isCredit,
                     onClick = {
                         isCredit = false
-                        if (category == ExpenseCategory.INCOME) category = ExpenseCategory.BILLS
+                        if (selectedCategoryKey == ExpenseCategory.INCOME.name) selectedCategoryKey = ExpenseCategory.BILLS.name
                     },
                     label = { Text("Bill / Expense") },
                     leadingIcon = if (!isCredit) {
@@ -272,7 +278,7 @@ private fun RecurringRuleFormSheet(
                     selected = isCredit,
                     onClick = {
                         isCredit = true
-                        category = ExpenseCategory.INCOME
+                        selectedCategoryKey = ExpenseCategory.INCOME.name
                     },
                     label = { Text("Allowance / Income") },
                     leadingIcon = if (isCredit) {
@@ -327,15 +333,27 @@ private fun RecurringRuleFormSheet(
 
             Text("Category", style = MaterialTheme.typography.labelLarge)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(ExpenseCategory.entries) { cat ->
+                items(categories, key = { it.key }) { cat ->
                     FilterChip(
-                        selected = category == cat,
-                        onClick = { category = cat },
+                        selected = selectedCategoryKey == cat.key,
+                        onClick = { selectedCategoryKey = cat.key },
                         label = { Text(cat.displayName) },
                         leadingIcon = {
                             Icon(cat.icon(), null, Modifier.size(16.dp), tint = cat.tintColor())
                         }
                     )
+                }
+                if (onCreateCategory != null) {
+                    item(key = "add_new_category") {
+                        FilterChip(
+                            selected = false,
+                            onClick = { showNewCategoryDialog = true },
+                            label = { Text("New") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Add, null, Modifier.size(16.dp))
+                            }
+                        )
+                    }
                 }
             }
 
@@ -396,10 +414,12 @@ private fun RecurringRuleFormSheet(
                             errorMsg = "Enter a valid positive amount"
                             return@Button
                         }
+                        val (resolvedCategory, customCategoryKey) = com.spendwise.domain.model.AppCategory.splitKey(selectedCategoryKey)
                         val rule = (initialRule ?: RecurringRule(title = "", amount = 0.0)).copy(
                             title = title.trim(),
                             amount = amt,
-                            category = category,
+                            category = resolvedCategory,
+                            customCategoryKey = customCategoryKey,
                             isCredit = isCredit,
                             includeInBudget = if (isCredit) includeInBudget else false,
                             frequency = frequency,
@@ -417,5 +437,18 @@ private fun RecurringRuleFormSheet(
                 }
             }
         }
+    }
+
+    if (showNewCategoryDialog && onCreateCategory != null) {
+        com.spendwise.ui.components.CategoryEditorDialog(
+            initialCategory = null,
+            onDismiss = { showNewCategoryDialog = false },
+            onSave = { name, colorHex, iconKey ->
+                showNewCategoryDialog = false
+                onCreateCategory(name, colorHex, iconKey) { createdKey ->
+                    selectedCategoryKey = createdKey
+                }
+            }
+        )
     }
 }

@@ -131,12 +131,12 @@ fun HistoryScreen(
                             label = { Text(type.label) }
                         )
                     }
-                    items(ExpenseCategory.entries) { cat ->
+                    items(uiState.categories, key = { it.key }) { cat ->
                         FilterChip(
-                            selected = uiState.selectedCategory == cat,
+                            selected = uiState.selectedCategoryKey == cat.key,
                             onClick = {
                                 viewModel.selectCategory(
-                                    if (uiState.selectedCategory == cat) null else cat
+                                    if (uiState.selectedCategoryKey == cat.key) null else cat.key
                                 )
                             },
                             label = { Text(cat.displayName) },
@@ -271,6 +271,7 @@ fun HistoryScreen(
                             TransactionItem(
                                 transaction = transaction,
                                 currency = uiState.currency,
+                                category = uiState.categories.firstOrNull { it.key == transaction.effectiveCategoryKey },
                                 onClick = { viewModel.startEditing(transaction) },
                                 onDelete = { viewModel.deleteTransaction(transaction) }
                             )
@@ -286,6 +287,8 @@ fun HistoryScreen(
             currency = uiState.currency,
             initialTransaction = editing,
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
+            categories = uiState.categories,
+            onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.stopEditing() },
             onSave = { updated -> viewModel.updateTransaction(updated) },
             onDelete = { toDelete -> viewModel.deleteTransaction(toDelete) }

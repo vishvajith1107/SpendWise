@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.Transaction
 import java.time.format.DateTimeFormatter
 
@@ -23,6 +24,7 @@ import java.time.format.DateTimeFormatter
 fun TransactionItem(
     transaction: Transaction,
     currency: String,
+    category: AppCategory? = null,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -30,7 +32,8 @@ fun TransactionItem(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val isDark = isSystemInDarkTheme()
     val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
-    val catColor = transaction.category.tintColor()
+    val resolvedCategory = category ?: AppCategory.fromBuiltIn(transaction.category)
+    val catColor = resolvedCategory.tintColor()
     val iconTint = if (transaction.isCredit) creditColor else catColor
     val containerColor = iconTint.copy(alpha = if (isDark) 0.22f else 0.13f)
 
@@ -53,8 +56,8 @@ fun TransactionItem(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = transaction.category.icon(),
-                        contentDescription = transaction.category.displayName,
+                        imageVector = resolvedCategory.icon(),
+                        contentDescription = resolvedCategory.displayName,
                         tint = iconTint,
                         modifier = Modifier.size(22.dp)
                     )
@@ -86,7 +89,7 @@ fun TransactionItem(
                     else -> ""
                 }
                 Text(
-                    text = "${transaction.category.displayName} · ${transaction.dateTime.format(timeFormatter)}$sourceTag$upiLabel$creditTag",
+                    text = "${resolvedCategory.displayName} · ${transaction.dateTime.format(timeFormatter)}$sourceTag$upiLabel$creditTag",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (transaction.isCredit && transaction.includeInBudget)
                         creditColor

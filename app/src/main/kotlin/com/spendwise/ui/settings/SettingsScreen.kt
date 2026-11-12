@@ -45,6 +45,7 @@ import java.time.LocalDate
 fun SettingsScreen(
     onBack: (() -> Unit)? = null,
     onNavigateToRecurring: () -> Unit,
+    onNavigateToCategories: () -> Unit = {},
     onNavigateToSupport: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -356,6 +357,42 @@ fun SettingsScreen(
                             Text("Recurring Bills & Income", fontWeight = FontWeight.SemiBold)
                             Text(
                                 "Automate rent, subscriptions, allowances, or salary schedules",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null)
+                }
+            }
+
+            // Categories Management Entry
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onNavigateToCategories)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Category,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Categories", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Add custom categories or edit names, icons & colors",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
