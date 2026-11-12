@@ -4,6 +4,7 @@ import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.TransactionRepository
 import com.spendwise.data.repository.UserPreferences
 import com.spendwise.domain.budget.BudgetEngine
+import com.spendwise.domain.model.BudgetPeriod
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -174,5 +175,78 @@ class BudgetEngineTest {
         assertEquals(150.0, state.rolloverBalance, 0.001)
         assertEquals(280.0, state.totalAvailable, 0.001)
         assertEquals(280.0, state.remainingToday, 0.001)
+    }
+
+    @Test
+    fun `weekly budget mode computes remaining for current monday to sunday week`() = runTest {
+        // Thursday 2026-11-12 -> Monday of that week is 2026-11-09
+        val thursday = LocalDate.of(2026, 11, 12)
+        val monday = LocalDate.of(2026, 11, 9)
+        val tomorrow = thursday.plusDays(1)
+
+        val prefs = UserPreferences(
+            dailyBudget = 1000.0,
+            budgetPeriod = BudgetPeriod.WEEKLY,
+            rolloverEnabled = true,
+            budgetStartEpochDay = monday.toEpochDay()
+        )
+
+        coEvery { transactionRepository.getTotalSpentForDay(thursday) } returns 120.0
+        coEvery { transactionRepository.getTotalSpentBetween(monday, tomorrow) } returns 350.0
+
+        val state = budgetEngine.calculateBudgetState(prefs, today = thursday)
+
+        assertEquals(BudgetPeriod.WEEKLY, state.period)
+        assertEquals(350.0, state.periodSpent, 0.001)
+        assertEquals(1000.0, state.totalAvailable, 0.001)
+        assertEquals(650.0, state.remainingToday, 0.001)
+    }
+
+    @Test
+    fun `monthly budget mode carries unspent balance across months`() = runTest {
+        val novStart = LocalDate.of(2026, 11, 1)
+        val nov12 = LocalDate.of(2026, 11, 12)
+        val octStart = LocalDate.of(2026, 10, 1)
+
+        val prefs = UserPreferences(
+            dailyBudget = 5000.0,
+            budgetPeriod = BudgetPeriod.MONTHLY,
+            rolloverEnabled = true,
+            budgetStartEpochDay = octStart.toEpochDay()
+        )
+
+        coEvery { transactionRepository.getTotalSpentForDay(nov12) } returns 200.0
+        coEvery { transactionRepository.getTotalSpentBetween(novStart, nov12.plusDays(1)) } returns 1200.0
+        coEvery { transactionRepository.getTotalSpentBetween(octStart, novStart) } returns 4200.0
+
+        val state = budgetEngine.calculateBudgetState(prefs, today = nov12)
+
+        // Oct budget 5000 - spent 4200 = +800 rollover; Nov available = 5800; spent = 1200 -> 4600 left
+        assertEquals(BudgetPeriod.MONTHLY, state.period)
+        assertEquals(800.0, state.rolloverBalance, 0.001)
+        assertEquals(5800.0, state.totalAvailable, 0.001)
+        assertEquals(4600.0, state.remainingToday, 0.001)
+    }
+
+    @Test
+    fun `no limit mode tracks month spend with zero budget limit`() = runTest {
+        val novStart = LocalDate.of(2026, 11, 1)
+        val nov12 = LocalDate.of(2026, 11, 12)
+
+        val prefs = UserPreferences(
+            dailyBudget = 130.0,
+            budgetPeriod = BudgetPeriod.NO_LIMIT,
+            budgetStartEpochDay = novStart.toEpochDay()
+        )
+
+        coEvery { transactionRepository.getTotalSpentForDay(nov12) } returns 95.0
+        coEvery { transactionRepository.getTotalSpentBetween(novStart, nov12.plusDays(1)) } returns 2450.0
+
+        val state = budgetEngine.calculateBudgetState(prefs, today = nov12)
+
+        assertEquals(BudgetPeriod.NO_LIMIT, state.period)
+        assertEquals(2450.0, state.periodSpent, 0.001)
+        assertEquals(95.0, state.spentToday, 0.001)
+        assertEquals(0.0, state.remainingToday, 0.001)
     }
 }

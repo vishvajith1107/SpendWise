@@ -56,4 +56,15 @@ interface TransactionDao {
 
     @Query("UPDATE transactions SET category = :newKey WHERE category = :oldKey")
     suspend fun reassignCategory(oldKey: String, newKey: String = "OTHER")
+
+    @Query("DELETE FROM transactions WHERE dateEpochDay < :cutoffEpochDay")
+    suspend fun deleteOlderThan(cutoffEpochDay: Long): Int
+
+    @Query(
+        "SELECT COUNT(*) || '|' || COALESCE(SUM(dateEpochDay), 0) || '|' || " +
+            "COALESCE(SUM(CASE WHEN isCredit = 0 AND excludeFromBudget = 0 THEN amount ELSE 0.0 END), 0.0) || '|' || " +
+            "COALESCE(SUM(CASE WHEN isCredit = 1 AND includeInBudget = 1 THEN amount ELSE 0.0 END), 0.0) " +
+            "FROM transactions"
+    )
+    fun observeBudgetSignature(): Flow<String>
 }

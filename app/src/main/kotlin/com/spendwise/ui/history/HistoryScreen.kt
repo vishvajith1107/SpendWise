@@ -288,6 +288,7 @@ fun HistoryScreen(
             initialTransaction = editing,
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
             categories = uiState.categories,
+            learnedMerchantRules = uiState.learnedMerchantRules,
             onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.stopEditing() },
             onSave = { updated -> viewModel.updateTransaction(updated) },

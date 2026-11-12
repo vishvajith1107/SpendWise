@@ -39,6 +39,7 @@ data class HistoryUiState(
     val groups: List<DailyTransactionGroup> = emptyList(),
     val filteredTransactions: List<Transaction> = emptyList(),
     val categories: List<AppCategory> = emptyList(),
+    val learnedMerchantRules: Map<String, String> = emptyMap(),
     val totalSpentAllTime: Double = 0.0,
     val totalCreditedAllTime: Double = 0.0,
     val totalCount: Int = 0,
@@ -63,12 +64,19 @@ class HistoryViewModel @Inject constructor(
     private val _editingTransaction = MutableStateFlow<Transaction?>(null)
 
     val uiState: StateFlow<HistoryUiState> = combine(
-        transactionRepository.getAllTransactions(),
-        preferencesRepository.userPreferences,
-        categoryRepository.getAllCategories(),
+        combine(
+            transactionRepository.getAllTransactions(),
+            preferencesRepository.userPreferences,
+            categoryRepository.getAllCategories(),
+            categoryRepository.getMerchantRules()
+        ) { transactions, prefs, categories, merchantRules ->
+            Triple(transactions, prefs, categories to merchantRules)
+        },
         _filter,
         _editingTransaction
-    ) { transactions, prefs, categories, filter, editingTx ->
+    ) { core, filter, editingTx ->
+        val (transactions, prefs, catsAndRules) = core
+        val (categories, merchantRules) = catsAndRules
         val categoryMap = categories.associateBy { it.key }
         val trimmedQuery = filter.searchQuery.trim()
         val filtered = transactions.filter { tx ->
@@ -108,6 +116,7 @@ class HistoryViewModel @Inject constructor(
             groups = groups,
             filteredTransactions = filtered,
             categories = categories,
+            learnedMerchantRules = merchantRules.associate { it.normalizedMerchant to it.categoryKey },
             totalSpentAllTime = filtered.filter { !it.isCredit }.sumOf { it.amount },
             totalCreditedAllTime = filtered.filter { it.isCredit }.sumOf { it.amount },
             totalCount = filtered.size,
@@ -166,9 +175,13 @@ class HistoryViewModel @Inject constructor(
     fun updateTransaction(transaction: Transaction) {
         viewModelScope.launch {
             transactionRepository.updateTransaction(transaction)
-            val prefs = preferencesRepository.userPreferences.first()
-            if (prefs.budgetStartEpochDay == 0L || transaction.date.toEpochDay() < prefs.budgetStartEpochDay) {
-                preferencesRepository.updateBudgetStartDay(transaction.date.toEpochDay())
+            categoryRepository.learnMerchantCategory(transaction.merchant, transaction.effectiveCategoryKey)
+            val countsInBudget = !transaction.excludeFromBudget && (!transaction.isCredit || transaction.includeInBudget)
+            if (countsInBudget) {
+                val prefs = preferencesRepository.userPreferences.first()
+                if (prefs.budgetStartEpochDay == 0L || transaction.date.toEpochDay() < prefs.budgetStartEpochDay) {
+                    preferencesRepository.updateBudgetStartDay(transaction.date.toEpochDay())
+                }
             }
             BudgetWidgetUpdater.update(app)
             stopEditing()

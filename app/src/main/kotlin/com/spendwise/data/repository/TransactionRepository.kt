@@ -76,4 +76,12 @@ class TransactionRepository @Inject constructor(
     suspend fun deleteTransaction(transaction: Transaction) {
         dao.deleteById(transaction.id)
     }
+
+    fun observeBudgetSignature(): Flow<String> = dao.observeBudgetSignature()
+
+    suspend fun pruneOlderThan(retentionDays: Int, today: LocalDate = LocalDate.now()): Int {
+        if (retentionDays <= 0) return 0
+        val cutoffEpochDay = today.minusDays(retentionDays.toLong()).toEpochDay()
+        return dao.deleteOlderThan(cutoffEpochDay)
+    }
 }

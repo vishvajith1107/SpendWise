@@ -103,4 +103,31 @@ object CategoryClassifier {
             else -> ExpenseCategory.OTHER
         }
     }
+
+    fun normalizeMerchant(merchant: String): String =
+        merchant.trim().replace(Regex("\\s+"), " ").uppercase(Locale.ROOT)
+
+    fun isGenericMerchant(merchant: String): Boolean {
+        val norm = normalizeMerchant(merchant)
+        return norm.isBlank() || norm in setOf(
+            "CASH EXPENSE",
+            "MANUAL CREDIT",
+            "BANK CREDIT",
+            "UPI PAYMENT",
+            "TRANSACTION"
+        )
+    }
+
+    fun resolveCategoryKey(
+        merchant: String,
+        description: String = "",
+        rawSms: String? = null,
+        isCredit: Boolean = false,
+        learnedRules: Map<String, String> = emptyMap()
+    ): String {
+        val norm = normalizeMerchant(merchant)
+        val learned = learnedRules[norm]
+        if (!learned.isNullOrBlank()) return learned
+        return classify(merchant, description, rawSms, isCredit).name
+    }
 }

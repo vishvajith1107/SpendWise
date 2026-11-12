@@ -6,14 +6,20 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TransactionEntity::class, RecurringRuleEntity::class, CategoryEntity::class],
-    version = 5,
+    entities = [
+        TransactionEntity::class,
+        RecurringRuleEntity::class,
+        CategoryEntity::class,
+        MerchantCategoryRuleEntity::class
+    ],
+    version = 6,
     exportSchema = false
 )
 abstract class SpendWiseDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun recurringRuleDao(): RecurringRuleDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun merchantCategoryRuleDao(): MerchantCategoryRuleDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -65,6 +71,21 @@ abstract class SpendWiseDatabase : RoomDatabase() {
                         isBuiltIn INTEGER NOT NULL,
                         sortOrder INTEGER NOT NULL,
                         PRIMARY KEY(`key`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS merchant_category_rules (
+                        normalizedMerchant TEXT NOT NULL,
+                        categoryKey TEXT NOT NULL,
+                        updatedAtEpochMs INTEGER NOT NULL,
+                        PRIMARY KEY(normalizedMerchant)
                     )
                     """.trimIndent()
                 )

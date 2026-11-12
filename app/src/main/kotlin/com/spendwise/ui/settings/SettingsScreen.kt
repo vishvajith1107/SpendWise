@@ -35,18 +35,21 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.spendwise.domain.model.BudgetPeriod
+import com.spendwise.domain.security.BiometricAuthHelper
 import com.spendwise.domain.support.SupportInfo
 import com.spendwise.ui.security.PinLockScreen
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     onBack: (() -> Unit)? = null,
     onNavigateToRecurring: () -> Unit,
     onNavigateToCategories: () -> Unit = {},
     onNavigateToSupport: () -> Unit,
+    onNavigateToAbout: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val prefs by viewModel.preferences.collectAsState(initial = null)
@@ -56,6 +59,7 @@ fun SettingsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val currency = prefs?.currency ?: "₹"
+    val biometricAvailable = remember(context) { BiometricAuthHelper.canUseBiometric(context) }
 
     var budgetText by remember(prefs?.dailyBudget) {
         mutableStateOf(prefs?.dailyBudget?.let { "%.0f".format(it) } ?: "")
@@ -68,6 +72,17 @@ fun SettingsScreen(
     var firstPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
     var showSmsImportChoiceDialog by remember { mutableStateOf(false) }
+    var pendingShortenRetentionDays by remember { mutableStateOf<Int?>(null) }
+
+    val selectedPeriod = prefs?.budgetPeriod ?: BudgetPeriod.DAILY
+    val retentionDays = prefs?.dataRetentionDays ?: 30
+    val retentionLabel = when (retentionDays) {
+        7 -> "7 Days"
+        30 -> "1 Month"
+        90 -> "3 Months"
+        365 -> "1 Year"
+        else -> "All Time"
+    }
 
     LaunchedEffect(statusMessage) {
         statusMessage?.let {
@@ -195,134 +210,197 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Daily Budget Card
+            SettingsSectionTitle("Budget & Limits")
+
+            // Budget Mode & Limit Card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        "Daily Budget Limit",
+                        "Budget Limit Mode",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "The target maximum amount you want to spend each day.",
+                        "Choose whether SpendWise tracks a daily, weekly, monthly budget, or tracks freely with no limit.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    OutlinedTextField(
-                        value = budgetText,
-                        onValueChange = {
-                            budgetText = it
-                            budgetError = false
-                        },
-                        label = { Text("Daily Amount ($currency)") },
-                        isError = budgetError,
-                        supportingText = if (budgetError) ({ Text("Please enter a valid positive number") }) else null,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = { Text(currency, modifier = Modifier.padding(start = 6.dp), fontSize = 16.sp) }
-                    )
-
-                    Button(
-                        onClick = {
-                            val amount = budgetText.toDoubleOrNull()
-                            if (amount == null || amount <= 0) {
-                                budgetError = true
-                            } else {
-                                viewModel.updateDailyBudget(amount)
-                                snackbarMessage = "Daily budget updated!"
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.End)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Save Limit")
-                    }
-                }
-            }
-
-            // Rollover Toggle Card
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Rollover Unused Budget", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "If enabled, any money left unspent today is carried over to boost tomorrow's budget. Overspending also carries over.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Switch(
-                        checked = prefs?.rolloverEnabled ?: true,
-                        onCheckedChange = { viewModel.updateRolloverEnabled(it) }
-                    )
-                }
-            }
-
-            // Credited Amount Default Card
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Include Credits in Daily Limit", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "When enabled, incoming bank credit/refund SMS are automatically added to your daily spending limit. You can still toggle this per entry by tapping any transaction.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Switch(
-                        checked = prefs?.includeCreditsInBudget ?: false,
-                        onCheckedChange = { viewModel.updateIncludeCreditsInBudget(it) }
-                    )
-                }
-            }
-
-            // Currency & Appearance Card
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Currency & Theme", fontWeight = FontWeight.SemiBold)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(listOf("₹", "$", "€", "£", "¥", "AED")) { symbol ->
+                        BudgetPeriod.entries.forEach { period ->
                             FilterChip(
-                                selected = currency == symbol,
-                                onClick = { viewModel.updateCurrency(symbol) },
-                                label = { Text(symbol) }
+                                selected = selectedPeriod == period,
+                                onClick = { viewModel.updateBudgetPeriod(period) },
+                                label = { Text(period.label) }
                             )
                         }
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+                    if (selectedPeriod != BudgetPeriod.NO_LIMIT) {
+                        OutlinedTextField(
+                            value = budgetText,
+                            onValueChange = {
+                                budgetText = it
+                                budgetError = false
+                            },
+                            label = { Text("${selectedPeriod.label} Limit ($currency)") },
+                            isError = budgetError,
+                            supportingText = if (budgetError) ({ Text("Please enter a valid positive number") }) else null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingIcon = { Text(currency, modifier = Modifier.padding(start = 6.dp), fontSize = 16.sp) }
+                        )
+
+                        Button(
+                            onClick = {
+                                val amount = budgetText.toDoubleOrNull()
+                                if (amount == null || amount <= 0) {
+                                    budgetError = true
+                                } else {
+                                    viewModel.updateDailyBudget(amount)
+                                    snackbarMessage = "${selectedPeriod.label} budget updated!"
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Save Limit")
+                        }
+                    } else {
+                        Text(
+                            "No Limit active: SpendWise logs your expenses and shows monthly totals without budget warnings.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            // Rollover & Credit Options Card
+            if (selectedPeriod != BudgetPeriod.NO_LIMIT) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        val currentTheme = prefs?.themeMode ?: "SYSTEM"
-                        listOf("SYSTEM" to "System", "LIGHT" to "Light", "DARK" to "Dark").forEach { (key, label) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Rollover Unused Budget", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Carry unused allowance or overspending across ${selectedPeriod.label.lowercase()} periods.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Switch(
+                                checked = prefs?.rolloverEnabled ?: true,
+                                onCheckedChange = { viewModel.updateRolloverEnabled(it) }
+                            )
+                        }
+
+                        HorizontalDivider()
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Include Credits in Limit", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Automatically add bank refund/credit SMS into your budget limit.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Switch(
+                                checked = prefs?.includeCreditsInBudget ?: false,
+                                onCheckedChange = { viewModel.updateIncludeCreditsInBudget(it) }
+                            )
+                        }
+
+                        HorizontalDivider()
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Reset Rollover Balance", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Restart rollover accumulation cleanly from today.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.resetBudgetStartDay()
+                                    snackbarMessage = "Rollover reset to today!"
+                                }
+                            ) {
+                                Text("Reset")
+                            }
+                        }
+                    }
+                }
+            }
+
+            SettingsSectionTitle("Tracking, Categories & Data")
+
+            // Data Time Period Card
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Data Time Period", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Controls how far back SMS scans look and keeps local history within your selected window.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    val retentionOptions = listOf(
+                        7 to "7 Days",
+                        30 to "1 Month",
+                        90 to "3 Months",
+                        365 to "1 Year",
+                        0 to "Keep All"
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        retentionOptions.forEach { (days, label) ->
                             FilterChip(
-                                selected = currentTheme == key,
-                                onClick = { viewModel.updateThemeMode(key) },
+                                selected = retentionDays == days,
+                                onClick = {
+                                    if (days == retentionDays) return@FilterChip
+                                    val shrinking = days > 0 && (retentionDays == 0 || days < retentionDays)
+                                    if (shrinking) {
+                                        pendingShortenRetentionDays = days
+                                    } else {
+                                        viewModel.updateDataRetentionDays(days, pruneNow = false)
+                                    }
+                                },
                                 label = { Text(label) }
                             )
                         }
@@ -419,7 +497,11 @@ fun SettingsScreen(
                         Text("Import Past Bank SMS", fontWeight = FontWeight.SemiBold)
                     }
                     Text(
-                        "Scan your SMS inbox from the last 30 days offline to recover missed bank debits or credits on their original dates without duplicates.",
+                        if (retentionDays > 0) {
+                            "Scan your SMS inbox for the last $retentionLabel offline to recover missed bank debits or credits on their original dates."
+                        } else {
+                            "Scan your full SMS inbox offline to recover missed bank debits or credits on their original dates."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -443,7 +525,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Scan Last 30 Days SMS")
+                        Text(if (retentionDays > 0) "Scan $retentionLabel SMS" else "Scan All Bank SMS")
                     }
                 }
             }
@@ -501,12 +583,15 @@ fun SettingsScreen(
                 }
             }
 
-            // App Passcode Lock Card
+            SettingsSectionTitle("Security & Appearance")
+
+            // Security Card (PIN + Biometrics)
             val hasPin = !prefs?.pinHash.isNullOrBlank()
+            val fingerprintEnabled = prefs?.biometricEnabled ?: false
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -525,7 +610,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             Column {
-                                Text("App Passcode Lock", fontWeight = FontWeight.SemiBold)
+                                Text("4-Digit PIN Lock", fontWeight = FontWeight.SemiBold)
                                 Text(
                                     "Require a 4-digit PIN when opening SpendWise",
                                     style = MaterialTheme.typography.bodySmall,
@@ -561,34 +646,81 @@ fun SettingsScreen(
                             Text("Change 4-Digit PIN")
                         }
                     }
-                }
-            }
 
-            // Reset Rollover Base
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Reset Rollover Calculation", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Resets the rollover accumulation to start clean from today without affecting past transaction history.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.resetBudgetStartDay()
-                            snackbarMessage = "Rollover reset to today!"
-                        },
-                        modifier = Modifier.align(Alignment.End)
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Reset Rollover to Today")
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Fingerprint,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text("Fingerprint Unlock", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (biometricAvailable) {
+                                        "Unlock SpendWise with your fingerprint or biometrics"
+                                    } else {
+                                        "No fingerprint enrolled in Android device settings"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = fingerprintEnabled,
+                            enabled = biometricAvailable,
+                            onCheckedChange = { viewModel.updateBiometricEnabled(it) }
+                        )
                     }
                 }
             }
+
+            // Currency & Appearance Card
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Currency & Theme", fontWeight = FontWeight.SemiBold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(listOf("₹", "$", "€", "£", "¥", "AED")) { symbol ->
+                            FilterChip(
+                                selected = currency == symbol,
+                                onClick = { viewModel.updateCurrency(symbol) },
+                                label = { Text(symbol) }
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val currentTheme = prefs?.themeMode ?: "SYSTEM"
+                        listOf("SYSTEM" to "System", "LIGHT" to "Light", "DARK" to "Dark").forEach { (key, label) ->
+                            FilterChip(
+                                selected = currentTheme == key,
+                                onClick = { viewModel.updateThemeMode(key) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            SettingsSectionTitle("Background, Support & About")
 
             // Background Reliability / Battery Optimization Card
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -667,18 +799,39 @@ fun SettingsScreen(
                 }
             }
 
-            // Info Card
+            // About SpendWise Card
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onNavigateToAbout)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("100% Offline & Private • v${SupportInfo.APP_VERSION}", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "SpendWise operates entirely offline with zero internet permissions. Your financial SMS messages and budgets never leave this device.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("About SpendWise", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "v${SupportInfo.APP_VERSION} • 100% offline guarantee & updates",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null)
                 }
             }
         }
@@ -738,7 +891,11 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Should imported transactions from the last 30 days count against your daily allowance, or just be added to History & Analytics?",
+                        if (retentionDays > 0) {
+                            "Should imported transactions from the last $retentionLabel count against your budget allowance, or just be added to History & Analytics?"
+                        } else {
+                            "Should imported SMS transactions count against your budget allowance, or just be added to History & Analytics?"
+                        },
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Button(
@@ -757,7 +914,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Count Towards Daily Allowance")
+                        Text("Count Towards Budget Allowance")
                     }
                 }
             },
@@ -769,4 +926,49 @@ fun SettingsScreen(
             }
         )
     }
+
+    pendingShortenRetentionDays?.let { targetDays ->
+        val targetLabel = when (targetDays) {
+            7 -> "7 Days"
+            30 -> "1 Month"
+            90 -> "3 Months"
+            365 -> "1 Year"
+            else -> "$targetDays Days"
+        }
+        AlertDialog(
+            onDismissRequest = { pendingShortenRetentionDays = null },
+            title = { Text("Shorten Data Window?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Setting the data window to $targetLabel will remove local transactions older than $targetLabel from History. Continue?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingShortenRetentionDays = null
+                        viewModel.updateDataRetentionDays(targetDays, pruneNow = true)
+                    }
+                ) {
+                    Text("Apply & Clean")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingShortenRetentionDays = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SettingsSectionTitle(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 6.dp, start = 4.dp)
+    )
 }

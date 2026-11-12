@@ -14,8 +14,8 @@ android {
         applicationId = "com.spendwise"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.1"
+        versionCode = 4
+        versionName = "2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -97,6 +97,9 @@ dependencies {
     // Glance Widget
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
+
+    // Biometric authentication
+    implementation(libs.androidx.biometric)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)

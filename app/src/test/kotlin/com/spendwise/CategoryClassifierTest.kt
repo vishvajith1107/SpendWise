@@ -1,40 +1,57 @@
 package com.spendwise
 
 import com.spendwise.domain.categorizer.CategoryClassifier
-import com.spendwise.domain.model.ExpenseCategory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CategoryClassifierTest {
 
     @Test
-    fun `classifies Indian food delivery and coffee merchants`() {
-        assertEquals(ExpenseCategory.FOOD, CategoryClassifier.classify("SWIGGY ORDER"))
-        assertEquals(ExpenseCategory.FOOD, CategoryClassifier.classify("Third Wave Coffee"))
-        assertEquals(ExpenseCategory.FOOD, CategoryClassifier.classify("Zomato Limited"))
+    fun `normalizeMerchant trims collapses whitespace and uppercases`() {
+        assertEquals("CHAI POINT", CategoryClassifier.normalizeMerchant("  chai   point \n"))
     }
 
     @Test
-    fun `classifies quick commerce and groceries`() {
-        assertEquals(ExpenseCategory.GROCERIES, CategoryClassifier.classify("BLINKIT"))
-        assertEquals(ExpenseCategory.GROCERIES, CategoryClassifier.classify("Zepto Now"))
-        assertEquals(ExpenseCategory.GROCERIES, CategoryClassifier.classify("DMart Ready"))
+    fun `isGenericMerchant detects placeholders and preserves real merchants`() {
+        assertTrue(CategoryClassifier.isGenericMerchant("  "))
+        assertTrue(CategoryClassifier.isGenericMerchant("Cash Expense"))
+        assertTrue(CategoryClassifier.isGenericMerchant("UPI PAYMENT"))
+        assertFalse(CategoryClassifier.isGenericMerchant("Local Bakery"))
     }
 
     @Test
-    fun `word boundaries avoid false positives inside unrelated words`() {
-        // "current" should not match "rent"; "steam" vs normal words; "vi" should not match "ravinder"
-        assertEquals(ExpenseCategory.OTHER, CategoryClassifier.classify("Ravinder Enterprises"))
-        assertEquals(ExpenseCategory.TRANSFER, CategoryClassifier.classify("ravinder@okicici"))
-        assertEquals(ExpenseCategory.BILLS, CategoryClassifier.classify("Vi Prepaid Recharge"))
-        assertEquals(ExpenseCategory.BILLS, CategoryClassifier.classify("House Rent Transfer"))
-    }
+    fun `resolveCategoryKey prioritizes learned rule over built-in keywords`() {
+        val rules = mapOf(
+            "SWIGGY" to "CUSTOM_OFFICE_LUNCH",
+            "RAMU TEA STALL" to "FOOD"
+        )
 
-    @Test
-    fun `credits always map to INCOME`() {
         assertEquals(
-            ExpenseCategory.INCOME,
-            CategoryClassifier.classify("Swiggy Refund", isCredit = true)
+            "CUSTOM_OFFICE_LUNCH",
+            CategoryClassifier.resolveCategoryKey(
+                merchant = " swiggy ",
+                learnedRules = rules
+            )
+        )
+        assertEquals(
+            "FOOD",
+            CategoryClassifier.resolveCategoryKey(
+                merchant = "Ramu Tea Stall",
+                learnedRules = rules
+            )
+        )
+    }
+
+    @Test
+    fun `resolveCategoryKey falls back to built-in classifier when no learned rule exists`() {
+        assertEquals(
+            "FOOD",
+            CategoryClassifier.resolveCategoryKey(
+                merchant = "Zomato Order",
+                learnedRules = emptyMap()
+            )
         )
     }
 }

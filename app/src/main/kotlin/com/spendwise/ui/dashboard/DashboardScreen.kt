@@ -34,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.spendwise.domain.budget.BudgetState
+import com.spendwise.domain.model.BudgetPeriod
 import com.spendwise.ui.components.TransactionFormSheet
 import com.spendwise.ui.components.TransactionItem
 import kotlin.math.abs
@@ -298,6 +299,7 @@ fun DashboardScreen(
             currency = uiState.budgetState?.currency ?: "₹",
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
             categories = uiState.categories,
+            learnedMerchantRules = uiState.learnedMerchantRules,
             onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.hideAddSheet() },
             onSave = { tx -> viewModel.saveManualTransaction(tx) }
@@ -310,6 +312,7 @@ fun DashboardScreen(
             initialTransaction = editing,
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
             categories = uiState.categories,
+            learnedMerchantRules = uiState.learnedMerchantRules,
             onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.stopEditing() },
             onSave = { updated -> viewModel.updateTransaction(updated) },
@@ -320,17 +323,27 @@ fun DashboardScreen(
 
 @Composable
 fun BudgetSummaryCard(budget: BudgetState) {
+    val isNoLimit = budget.period == BudgetPeriod.NO_LIMIT
     val remaining = budget.remainingToday
-    val isOverBudget = remaining < 0
-    val fillFraction = if (budget.totalAvailable > 0) {
-        (budget.spentToday / budget.totalAvailable).coerceIn(0.0, 1.0).toFloat()
-    } else 1f
+    val isOverBudget = !isNoLimit && remaining < 0
+    val fillFraction = if (!isNoLimit && budget.totalAvailable > 0) {
+        (budget.periodSpent / budget.totalAvailable).coerceIn(0.0, 1.0).toFloat()
+    } else if (isNoLimit) 0f else 1f
 
-    val gradientColors = if (isOverBudget) {
-        listOf(Color(0xFFB71C1C), Color(0xFFD32F2F))
-    } else {
-        listOf(Color(0xFF1B5E20), Color(0xFF2E7D32))
+    val gradientColors = when {
+        isNoLimit -> listOf(Color(0xFF00695C), Color(0xFF00897B))
+        isOverBudget -> listOf(Color(0xFFB71C1C), Color(0xFFD32F2F))
+        else -> listOf(Color(0xFF1B5E20), Color(0xFF2E7D32))
     }
+
+    val headerLabel = when (budget.period) {
+        BudgetPeriod.NO_LIMIT -> "Spent This Month (No Limit)"
+        BudgetPeriod.DAILY -> if (isOverBudget) "Over Daily Budget by" else "Remaining to Spend Today"
+        BudgetPeriod.WEEKLY -> if (isOverBudget) "Over Weekly Budget by" else "Remaining This Week"
+        BudgetPeriod.MONTHLY -> if (isOverBudget) "Over Monthly Budget by" else "Remaining This Month"
+    }
+
+    val primaryAmount = if (isNoLimit) budget.periodSpent else abs(remaining)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -345,38 +358,45 @@ fun BudgetSummaryCard(budget: BudgetState) {
         ) {
             Column {
                 Text(
-                    text = if (isOverBudget) "Over Budget by" else "Remaining to Spend Today",
+                    text = headerLabel,
                     color = Color.White.copy(alpha = 0.85f),
                     style = MaterialTheme.typography.labelLarge
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "${budget.currency}${"%.2f".format(abs(remaining))}",
+                    text = "${budget.currency}${"%.2f".format(primaryAmount)}",
                     color = Color.White,
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.ExtraBold
                 )
 
-                Spacer(Modifier.height(14.dp))
+                if (!isNoLimit) {
+                    Spacer(Modifier.height(14.dp))
 
-                LinearProgressIndicator(
-                    progress = { fillFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = if (isOverBudget) Color(0xFFFFCDD2) else Color(0xFFC8E6C9),
-                    trackColor = Color.White.copy(alpha = 0.25f)
-                )
+                    LinearProgressIndicator(
+                        progress = { fillFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = if (isOverBudget) Color(0xFFFFCDD2) else Color(0xFFC8E6C9),
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                }
 
-                if (budget.creditedIncludedToday > 0.0) {
+                if (budget.periodCreditedIncluded > 0.0) {
                     Spacer(Modifier.height(10.dp))
+                    val periodCreditLabel = when (budget.period) {
+                        BudgetPeriod.DAILY -> "today"
+                        BudgetPeriod.WEEKLY -> "this week"
+                        BudgetPeriod.MONTHLY, BudgetPeriod.NO_LIMIT -> "this month"
+                    }
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = Color.White.copy(alpha = 0.16f)
                     ) {
                         Text(
-                            text = "Includes +${budget.currency}${"%.2f".format(budget.creditedIncludedToday)} credited today",
+                            text = "Includes +${budget.currency}${"%.2f".format(budget.periodCreditedIncluded)} credited $periodCreditLabel",
                             color = Color.White,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
@@ -391,18 +411,42 @@ fun BudgetSummaryCard(budget: BudgetState) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    BudgetStatItem(
-                        label = "Daily Limit",
-                        value = "${budget.currency}${"%.0f".format(budget.dailyBudget)}"
-                    )
-                    BudgetStatItem(
-                        label = "Spent Today",
-                        value = "${budget.currency}${"%.2f".format(budget.spentToday)}"
-                    )
-                    BudgetStatItem(
-                        label = "Rollover",
-                        value = "${if (budget.rolloverBalance >= 0) "+" else "-"}${budget.currency}${"%.2f".format(abs(budget.rolloverBalance))}"
-                    )
+                    if (isNoLimit) {
+                        BudgetStatItem(label = "Mode", value = "No Limit")
+                        BudgetStatItem(
+                            label = "Spent Today",
+                            value = "${budget.currency}${"%.2f".format(budget.spentToday)}"
+                        )
+                        BudgetStatItem(
+                            label = "This Month",
+                            value = "${budget.currency}${"%.2f".format(budget.periodSpent)}"
+                        )
+                    } else {
+                        val limitTitle = when (budget.period) {
+                            BudgetPeriod.DAILY -> "Daily Limit"
+                            BudgetPeriod.WEEKLY -> "Weekly Limit"
+                            BudgetPeriod.MONTHLY -> "Monthly Limit"
+                            BudgetPeriod.NO_LIMIT -> "Limit"
+                        }
+                        val spentTitle = when (budget.period) {
+                            BudgetPeriod.DAILY -> "Spent Today"
+                            BudgetPeriod.WEEKLY -> "Spent Week"
+                            BudgetPeriod.MONTHLY -> "Spent Month"
+                            BudgetPeriod.NO_LIMIT -> "Spent"
+                        }
+                        BudgetStatItem(
+                            label = limitTitle,
+                            value = "${budget.currency}${"%.0f".format(budget.dailyBudget)}"
+                        )
+                        BudgetStatItem(
+                            label = spentTitle,
+                            value = "${budget.currency}${"%.2f".format(budget.periodSpent)}"
+                        )
+                        BudgetStatItem(
+                            label = "Rollover",
+                            value = "${if (budget.rolloverBalance >= 0) "+" else "-"}${budget.currency}${"%.2f".format(abs(budget.rolloverBalance))}"
+                        )
+                    }
                 }
             }
         }

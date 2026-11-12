@@ -5,10 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.UserPreferences
+import com.spendwise.domain.model.BudgetPeriod
 import com.spendwise.ui.widget.BudgetWidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -97,13 +99,57 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateBudgetPeriod(period: BudgetPeriod) {
+        viewModelScope.launch {
+            preferencesRepository.updateBudgetPeriod(period)
+            BudgetWidgetUpdater.update(app)
+            _statusMessage.value = "Budget mode updated to ${period.label}"
+        }
+    }
+
+    fun updateBiometricEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateBiometricEnabled(enabled)
+            _statusMessage.value = if (enabled) {
+                "Fingerprint unlock enabled"
+            } else {
+                "Fingerprint unlock disabled"
+            }
+        }
+    }
+
+    fun updateDataRetentionDays(days: Int, pruneNow: Boolean = false) {
+        viewModelScope.launch {
+            preferencesRepository.updateDataRetentionDays(days)
+            val label = when (days) {
+                7 -> "7 Days"
+                30 -> "1 Month"
+                90 -> "3 Months"
+                365 -> "1 Year"
+                else -> "Keep All"
+            }
+            if (pruneNow && days > 0) {
+                val removed = transactionRepository.pruneOlderThan(days)
+                BudgetWidgetUpdater.update(app)
+                _statusMessage.value = if (removed > 0) {
+                    "Data window set to $label (removed $removed older entries)"
+                } else {
+                    "Data window set to $label"
+                }
+            } else {
+                _statusMessage.value = "Data window set to $label"
+            }
+        }
+    }
+
     fun scanSmsInbox(countTowardsAllowance: Boolean = false) {
         if (_isBusy.value) return
         viewModelScope.launch {
             _isBusy.value = true
             try {
+                val daysBack = preferencesRepository.userPreferences.first().dataRetentionDays
                 val result = smsInboxImporter.importRecentSms(
-                    daysBack = 30,
+                    daysBack = daysBack,
                     countTowardsAllowance = countTowardsAllowance
                 )
                 BudgetWidgetUpdater.update(app)

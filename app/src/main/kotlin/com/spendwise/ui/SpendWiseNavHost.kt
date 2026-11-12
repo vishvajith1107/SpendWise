@@ -22,6 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.spendwise.ui.about.AboutScreen
 import com.spendwise.ui.analytics.AnalyticsScreen
 import com.spendwise.ui.categories.CategoriesScreen
 import com.spendwise.ui.dashboard.DashboardScreen
@@ -38,6 +39,7 @@ sealed class Screen(val route: String) {
     object Recurring : Screen("recurring")
     object Categories : Screen("categories")
     object Support : Screen("support")
+    object About : Screen("about")
 }
 
 private data class BottomNavItem(
@@ -112,7 +114,13 @@ fun SpendWiseNavHost() {
                     onBack = null,
                     onNavigateToRecurring = { navController.navigate(Screen.Recurring.route) },
                     onNavigateToCategories = { navController.navigate(Screen.Categories.route) },
-                    onNavigateToSupport = { navController.navigate(Screen.Support.route) }
+                    onNavigateToSupport = { navController.navigate(Screen.Support.route) },
+                    onNavigateToAbout = { navController.navigate(Screen.About.route) }
+                )
+            }
+            composable(Screen.About.route) {
+                AboutScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable(Screen.Categories.route) {

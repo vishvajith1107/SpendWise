@@ -43,6 +43,7 @@ fun TransactionFormSheet(
     initialTransaction: Transaction? = null,
     defaultIncludeCreditsInBudget: Boolean = false,
     categories: List<AppCategory> = AppCategory.builtInDefaults(),
+    learnedMerchantRules: Map<String, String> = emptyMap(),
     onCreateCategory: ((name: String, colorHex: Long, iconKey: String, onCreated: (String) -> Unit) -> Unit)? = null,
     onDismiss: () -> Unit,
     onSave: (Transaction) -> Unit,
@@ -139,7 +140,12 @@ fun TransactionFormSheet(
                     onClick = {
                         isCredit = false
                         if (!categoryManuallyPicked || selectedCategoryKey == ExpenseCategory.INCOME.name) {
-                            selectedCategoryKey = CategoryClassifier.classify(merchant, notes, isCredit = false).name
+                            selectedCategoryKey = CategoryClassifier.resolveCategoryKey(
+                                merchant = merchant,
+                                description = notes,
+                                isCredit = false,
+                                learnedRules = learnedMerchantRules
+                            )
                         }
                     },
                     label = { Text("Expense (Debit)") },
@@ -179,7 +185,12 @@ fun TransactionFormSheet(
                 onValueChange = {
                     merchant = it
                     if (!categoryManuallyPicked) {
-                        selectedCategoryKey = CategoryClassifier.classify(it, notes, isCredit = isCredit).name
+                        selectedCategoryKey = CategoryClassifier.resolveCategoryKey(
+                            merchant = it,
+                            description = notes,
+                            isCredit = isCredit,
+                            learnedRules = learnedMerchantRules
+                        )
                     }
                 },
                 label = {

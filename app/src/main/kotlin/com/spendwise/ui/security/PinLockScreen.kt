@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +23,9 @@ fun PinLockScreen(
     title: String = "Unlock SpendWise",
     subtitle: String = "Enter your 4-digit passcode",
     errorMessage: String? = null,
+    showBiometricButton: Boolean = false,
+    allowPinEntry: Boolean = true,
+    onUseBiometric: (() -> Unit)? = null,
     onPinComplete: (String) -> Unit,
     onCancel: (() -> Unit)? = null
 ) {
@@ -77,74 +82,119 @@ fun PinLockScreen(
 
                 Spacer(Modifier.height(16.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    repeat(4) { idx ->
-                        val filled = idx < entered.length
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (filled) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                                )
-                        )
+                if (allowPinEntry) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        repeat(4) { idx ->
+                            val filled = idx < entered.length
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (filled) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                                    )
+                            )
+                        }
                     }
                 }
             }
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val rows = listOf(
-                    listOf("1", "2", "3"),
-                    listOf("4", "5", "6"),
-                    listOf("7", "8", "9"),
-                    listOf(if (onCancel != null) "CANCEL" else "", "0", "BACK")
-                )
-                rows.forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        row.forEach { key ->
-                            when (key) {
-                                "" -> Spacer(Modifier.size(72.dp))
-                                "CANCEL" -> Box(
-                                    modifier = Modifier
-                                        .size(72.dp)
-                                        .clip(CircleShape)
-                                        .clickable { onCancel?.invoke() },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        "Cancel",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                "BACK" -> Surface(
-                                    modifier = Modifier
-                                        .size(72.dp)
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            if (entered.isNotEmpty()) entered = entered.dropLast(1)
-                                        },
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = "Backspace")
+            if (!allowPinEntry) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(bottom = 32.dp)
+                ) {
+                    Button(
+                        onClick = { onUseBiometric?.invoke() },
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Fingerprint,
+                            contentDescription = "Unlock with Fingerprint",
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Unlock with Fingerprint")
+                    }
+                }
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val leftKey = when {
+                        onCancel != null -> "CANCEL"
+                        showBiometricButton && onUseBiometric != null -> "BIO"
+                        else -> ""
+                    }
+                    val rows = listOf(
+                        listOf("1", "2", "3"),
+                        listOf("4", "5", "6"),
+                        listOf("7", "8", "9"),
+                        listOf(leftKey, "0", "BACK")
+                    )
+                    rows.forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            row.forEach { key ->
+                                when (key) {
+                                    "" -> Spacer(Modifier.size(72.dp))
+                                    "CANCEL" -> Box(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(CircleShape)
+                                            .clickable { onCancel?.invoke() },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "Cancel",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
-                                }
-                                else -> Surface(
-                                    modifier = Modifier
-                                        .size(72.dp)
-                                        .clip(CircleShape)
-                                        .clickable { pressDigit(key) },
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(key, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                                    "BIO" -> Surface(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(CircleShape)
+                                            .clickable { onUseBiometric?.invoke() },
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.Default.Fingerprint,
+                                                contentDescription = "Use Fingerprint",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(30.dp)
+                                            )
+                                        }
+                                    }
+                                    "BACK" -> Surface(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                if (entered.isNotEmpty()) entered = entered.dropLast(1)
+                                            },
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = "Backspace")
+                                        }
+                                    }
+                                    else -> Surface(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(CircleShape)
+                                            .clickable { pressDigit(key) },
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(key, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                                        }
                                     }
                                 }
                             }

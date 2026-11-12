@@ -1,10 +1,13 @@
 package com.spendwise.data.repository
 
 import com.spendwise.data.db.CategoryDao
+import com.spendwise.data.db.MerchantCategoryRuleDao
+import com.spendwise.data.db.MerchantCategoryRuleEntity
 import com.spendwise.data.db.RecurringRuleDao
 import com.spendwise.data.db.TransactionDao
 import com.spendwise.data.db.toDomain
 import com.spendwise.data.db.toEntity
+import com.spendwise.domain.categorizer.CategoryClassifier
 import com.spendwise.domain.model.AppCategory
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -18,7 +21,8 @@ import javax.inject.Singleton
 class CategoryRepository @Inject constructor(
     private val dao: CategoryDao,
     private val transactionDao: TransactionDao,
-    private val recurringRuleDao: RecurringRuleDao
+    private val recurringRuleDao: RecurringRuleDao,
+    private val merchantCategoryRuleDao: MerchantCategoryRuleDao
 ) {
     private val seedMutex = Mutex()
     private var seeded = false
@@ -75,11 +79,34 @@ class CategoryRepository @Inject constructor(
         ensureSeeded()
         transactionDao.reassignCategory(oldKey = key, newKey = "OTHER")
         recurringRuleDao.reassignCategory(oldKey = key, newKey = "OTHER")
+        merchantCategoryRuleDao.reassignCategory(oldKey = key, newKey = "OTHER")
         dao.deleteCustomByKey(key)
     }
 
     suspend fun resetBuiltInDefaults() {
         AppCategory.builtInDefaults().forEach { dao.upsert(it.toEntity()) }
         seeded = true
+    }
+
+    fun getMerchantRules(): Flow<List<MerchantCategoryRuleEntity>> =
+        merchantCategoryRuleDao.getAllRules()
+
+    suspend fun getLearnedMerchantMap(): Map<String, String> =
+        merchantCategoryRuleDao.getAllRulesOnce().associate { it.normalizedMerchant to it.categoryKey }
+
+    suspend fun learnMerchantCategory(merchant: String, categoryKey: String) {
+        if (CategoryClassifier.isGenericMerchant(merchant)) return
+        val normalized = CategoryClassifier.normalizeMerchant(merchant)
+        merchantCategoryRuleDao.upsert(
+            MerchantCategoryRuleEntity(
+                normalizedMerchant = normalized,
+                categoryKey = categoryKey,
+                updatedAtEpochMs = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun deleteMerchantRule(normalizedMerchant: String) {
+        merchantCategoryRuleDao.deleteByMerchant(normalizedMerchant)
     }
 }

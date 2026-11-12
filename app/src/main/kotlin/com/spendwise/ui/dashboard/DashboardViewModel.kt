@@ -23,6 +23,7 @@ data class DashboardUiState(
     val budgetState: BudgetState? = null,
     val todayTransactions: List<Transaction> = emptyList(),
     val categories: List<AppCategory> = emptyList(),
+    val learnedMerchantRules: Map<String, String> = emptyMap(),
     val upcomingRecurringCount: Int = 0,
     val isLoading: Boolean = true,
     val showAddTransactionSheet: Boolean = false,
@@ -58,13 +59,17 @@ class DashboardViewModel @Inject constructor(
                     combine(
                         combine(
                             transactionRepository.getTransactionsForDay(today),
+                            transactionRepository.observeBudgetSignature(),
                             preferencesRepository.userPreferences,
                             recurringRepository.getAllRules(),
                             categoryRepository.getAllCategories()
-                        ) { txs, prefs, rules, cats -> Triple(txs, prefs, rules to cats) },
+                        ) { txs, _, prefs, rules, cats ->
+                            Triple(txs, prefs, rules to cats)
+                        },
+                        categoryRepository.getMerchantRules(),
                         _showAddSheet,
                         _editingTransaction
-                    ) { data, showSheet, editingTx ->
+                    ) { data, merchantRules, showSheet, editingTx ->
                         val (transactions, prefs, rulesAndCats) = data
                         val (rules, categories) = rulesAndCats
                         val budgetState = budgetEngine.calculateBudgetState(prefs, today)
@@ -76,6 +81,7 @@ class DashboardViewModel @Inject constructor(
                             budgetState = budgetState,
                             todayTransactions = transactions,
                             categories = categories,
+                            learnedMerchantRules = merchantRules.associate { it.normalizedMerchant to it.categoryKey },
                             upcomingRecurringCount = upcomingDue,
                             isLoading = false,
                             showAddTransactionSheet = showSheet,
@@ -139,7 +145,8 @@ class DashboardViewModel @Inject constructor(
     fun saveManualTransaction(transaction: Transaction) {
         viewModelScope.launch {
             transactionRepository.insertTransaction(transaction)
-            extendBudgetStartDayIfNeeded(transaction.date)
+            categoryRepository.learnMerchantCategory(transaction.merchant, transaction.effectiveCategoryKey)
+            extendBudgetStartDayIfNeeded(transaction)
             BudgetWidgetUpdater.update(app)
             hideAddSheet()
         }
@@ -148,16 +155,19 @@ class DashboardViewModel @Inject constructor(
     fun updateTransaction(transaction: Transaction) {
         viewModelScope.launch {
             transactionRepository.updateTransaction(transaction)
-            extendBudgetStartDayIfNeeded(transaction.date)
+            categoryRepository.learnMerchantCategory(transaction.merchant, transaction.effectiveCategoryKey)
+            extendBudgetStartDayIfNeeded(transaction)
             BudgetWidgetUpdater.update(app)
             stopEditing()
         }
     }
 
-    private suspend fun extendBudgetStartDayIfNeeded(date: LocalDate) {
+    private suspend fun extendBudgetStartDayIfNeeded(transaction: Transaction) {
+        val countsInBudget = !transaction.excludeFromBudget && (!transaction.isCredit || transaction.includeInBudget)
+        if (!countsInBudget) return
         val prefs = preferencesRepository.userPreferences.first()
-        if (prefs.budgetStartEpochDay == 0L || date.toEpochDay() < prefs.budgetStartEpochDay) {
-            preferencesRepository.updateBudgetStartDay(date.toEpochDay())
+        if (prefs.budgetStartEpochDay == 0L || transaction.date.toEpochDay() < prefs.budgetStartEpochDay) {
+            preferencesRepository.updateBudgetStartDay(transaction.date.toEpochDay())
         }
     }
 

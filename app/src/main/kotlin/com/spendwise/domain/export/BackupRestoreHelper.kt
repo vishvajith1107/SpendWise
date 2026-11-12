@@ -5,6 +5,7 @@ import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.RecurringRepository
 import com.spendwise.data.repository.TransactionRepository
 import com.spendwise.domain.model.AppCategory
+import com.spendwise.domain.model.BudgetPeriod
 import com.spendwise.domain.model.ExpenseCategory
 import com.spendwise.domain.model.RecurringFrequency
 import com.spendwise.domain.model.RecurringRule
@@ -37,20 +38,24 @@ class BackupRestoreHelper @Inject constructor(
         val transactions = transactionRepository.getAllTransactionsSnapshot()
         val rules = recurringRepository.getAllRulesSnapshot()
         val categories = categoryRepository.getAllCategoriesSnapshot()
+        val learnedMerchants = categoryRepository.getLearnedMerchantMap()
         val zone = ZoneId.systemDefault()
 
         val root = JSONObject().apply {
-            put("schemaVersion", 1)
+            put("schemaVersion", 2)
             put("app", "SpendWise")
             put("exportedAtEpochMs", System.currentTimeMillis())
 
             put("preferences", JSONObject().apply {
                 put("dailyBudget", prefs.dailyBudget)
+                put("budgetPeriod", prefs.budgetPeriod.name)
                 put("rolloverEnabled", prefs.rolloverEnabled)
                 put("budgetStartEpochDay", prefs.budgetStartEpochDay)
                 put("currency", prefs.currency)
                 put("includeCreditsInBudget", prefs.includeCreditsInBudget)
                 put("themeMode", prefs.themeMode)
+                put("dataRetentionDays", prefs.dataRetentionDays)
+                put("biometricEnabled", prefs.biometricEnabled)
             })
 
             put("transactions", JSONArray().apply {
@@ -105,6 +110,15 @@ class BackupRestoreHelper @Inject constructor(
                     })
                 }
             })
+
+            put("merchantCategoryRules", JSONArray().apply {
+                learnedMerchants.forEach { (merchant, catKey) ->
+                    put(JSONObject().apply {
+                        put("merchant", merchant)
+                        put("categoryKey", catKey)
+                    })
+                }
+            })
         }
         return root.toString(2)
     }
@@ -119,7 +133,10 @@ class BackupRestoreHelper @Inject constructor(
                 rolloverEnabled = p.optBoolean("rolloverEnabled", true),
                 budgetStartEpochDay = p.optLong("budgetStartEpochDay", LocalDate.now().toEpochDay()),
                 currency = p.optString("currency", "₹").ifBlank { "₹" },
-                includeCreditsInBudget = p.optBoolean("includeCreditsInBudget", false)
+                includeCreditsInBudget = p.optBoolean("includeCreditsInBudget", false),
+                budgetPeriod = if (p.has("budgetPeriod")) BudgetPeriod.fromStorageKey(p.optString("budgetPeriod")) else null,
+                dataRetentionDays = if (p.has("dataRetentionDays")) p.optInt("dataRetentionDays", 30) else null,
+                biometricEnabled = if (p.has("biometricEnabled")) p.optBoolean("biometricEnabled", false) else null
             )
             p.optString("themeMode").takeIf { it.isNotBlank() }?.let {
                 preferencesRepository.updateThemeMode(it)
@@ -216,6 +233,16 @@ class BackupRestoreHelper @Inject constructor(
                     )
                 )
                 rulesImported++
+            }
+        }
+
+        val merchantArray = root.optJSONArray("merchantCategoryRules") ?: JSONArray()
+        for (i in 0 until merchantArray.length()) {
+            val obj = merchantArray.getJSONObject(i)
+            val merchant = obj.optString("merchant").trim()
+            val catKey = obj.optString("categoryKey").trim()
+            if (merchant.isNotBlank() && catKey.isNotBlank()) {
+                categoryRepository.learnMerchantCategory(merchant, catKey)
             }
         }
 

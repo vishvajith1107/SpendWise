@@ -21,6 +21,7 @@ import com.spendwise.MainActivity
 import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.domain.budget.BudgetEngine
 import com.spendwise.domain.budget.BudgetState
+import com.spendwise.domain.model.BudgetPeriod
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -53,9 +54,22 @@ class BudgetWidget : GlanceAppWidget() {
 
 @androidx.compose.runtime.Composable
 private fun WidgetContent(budgetState: BudgetState) {
+    val isNoLimit = budgetState.period == BudgetPeriod.NO_LIMIT
     val remaining = budgetState.remainingToday
-    val isOverBudget = remaining < 0
-    val bgColor = if (isOverBudget) Color(0xFFB71C1C) else Color(0xFF1B5E20)
+    val isOverBudget = !isNoLimit && remaining < 0
+    val bgColor = when {
+        isNoLimit -> Color(0xFF00695C)
+        isOverBudget -> Color(0xFFB71C1C)
+        else -> Color(0xFF1B5E20)
+    }
+    val headlineLabel = when {
+        isNoLimit -> "SPENT THIS MONTH"
+        isOverBudget -> "OVER BUDGET"
+        budgetState.period == BudgetPeriod.WEEKLY -> "REMAINING THIS WEEK"
+        budgetState.period == BudgetPeriod.MONTHLY -> "REMAINING THIS MONTH"
+        else -> "REMAINING TODAY"
+    }
+    val primaryAmount = if (isNoLimit) budgetState.periodSpent else abs(remaining)
 
     Column(
         modifier = GlanceModifier
@@ -68,7 +82,7 @@ private fun WidgetContent(budgetState: BudgetState) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = if (isOverBudget) "OVER BUDGET" else "REMAINING TODAY",
+            text = headlineLabel,
             style = TextStyle(
                 color = ColorProvider(Color.White.copy(alpha = 0.8f)),
                 fontSize = 11.sp,
@@ -79,7 +93,7 @@ private fun WidgetContent(budgetState: BudgetState) {
         Spacer(modifier = GlanceModifier.height(4.dp))
 
         Text(
-            text = "${budgetState.currency}${"%.2f".format(abs(remaining))}",
+            text = "${budgetState.currency}${"%.2f".format(primaryAmount)}",
             style = TextStyle(
                 color = ColorProvider(Color.White),
                 fontSize = 24.sp,
@@ -94,20 +108,22 @@ private fun WidgetContent(budgetState: BudgetState) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Spent: ${budgetState.currency}${"%.2f".format(budgetState.spentToday)}",
+                text = "Today: ${budgetState.currency}${"%.2f".format(budgetState.spentToday)}",
                 style = TextStyle(
                     color = ColorProvider(Color.White.copy(alpha = 0.85f)),
                     fontSize = 11.sp
                 )
             )
-            Spacer(modifier = GlanceModifier.width(8.dp))
-            Text(
-                text = "• Limit: ${budgetState.currency}${"%.0f".format(budgetState.dailyBudget)}",
-                style = TextStyle(
-                    color = ColorProvider(Color.White.copy(alpha = 0.85f)),
-                    fontSize = 11.sp
+            if (!isNoLimit) {
+                Spacer(modifier = GlanceModifier.width(8.dp))
+                Text(
+                    text = "• Limit: ${budgetState.currency}${"%.0f".format(budgetState.dailyBudget)}",
+                    style = TextStyle(
+                        color = ColorProvider(Color.White.copy(alpha = 0.85f)),
+                        fontSize = 11.sp
+                    )
                 )
-            )
+            }
         }
     }
 }

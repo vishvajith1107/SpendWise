@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.spendwise.MainActivity
 import com.spendwise.R
 import com.spendwise.domain.budget.BudgetState
+import com.spendwise.domain.model.BudgetPeriod
 import com.spendwise.domain.model.Transaction
 import kotlin.math.abs
 
@@ -56,14 +57,23 @@ object BudgetNotificationHelper {
         createNotificationChannel(context)
 
         val currency = budgetState.currency
+        val isNoLimit = budgetState.period == BudgetPeriod.NO_LIMIT
         val remaining = budgetState.remainingToday
-        val isOverBudget = remaining < 0
+        val isOverBudget = !isNoLimit && remaining < 0
+        val remainingText = when (budgetState.period) {
+            BudgetPeriod.DAILY -> "Remaining today: $currency${"%.2f".format(remaining)}"
+            BudgetPeriod.WEEKLY -> "Remaining this week: $currency${"%.2f".format(remaining)}"
+            BudgetPeriod.MONTHLY -> "Remaining this month: $currency${"%.2f".format(remaining)}"
+            BudgetPeriod.NO_LIMIT -> "Spent today: $currency${"%.2f".format(budgetState.spentToday)}"
+        }
 
         val (title, summaryLine, accentColor) = if (transaction.isCredit) {
-            val statusText = if (transaction.includeInBudget) {
-                "Added to daily limit • Remaining today: $currency${"%.2f".format(remaining)}"
+            val statusText = if (isNoLimit) {
+                "Recorded as credit • $remainingText"
+            } else if (transaction.includeInBudget) {
+                "Added to ${budgetState.period.label.lowercase()} limit • $remainingText"
             } else {
-                "Not added to daily limit • Remaining today: $currency${"%.2f".format(remaining)}"
+                "Not added to limit • $remainingText"
             }
             Triple(
                 "Credited +$currency${"%.2f".format(transaction.amount)} • ${transaction.merchant}",
@@ -71,10 +81,10 @@ object BudgetNotificationHelper {
                 0xFF2E7D32.toInt()
             )
         } else {
-            val spentLine = if (isOverBudget) {
-                "Over budget by $currency${"%.2f".format(abs(remaining))}! (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
-            } else {
-                "Remaining today: $currency${"%.2f".format(remaining)} (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
+            val spentLine = when {
+                isNoLimit -> "Spent today: $currency${"%.2f".format(budgetState.spentToday)} • Month: $currency${"%.2f".format(budgetState.periodSpent)}"
+                isOverBudget -> "Over ${budgetState.period.label.lowercase()} budget by $currency${"%.2f".format(abs(remaining))}! (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
+                else -> "$remainingText (Spent today: $currency${"%.2f".format(budgetState.spentToday)})"
             }
             Triple(
                 "Paid $currency${"%.2f".format(transaction.amount)} • ${transaction.merchant}",

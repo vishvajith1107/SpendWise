@@ -2,8 +2,11 @@ package com.spendwise.domain.parser
 
 import android.content.Context
 import android.provider.Telephony
+import com.spendwise.data.repository.CategoryRepository
 import com.spendwise.data.repository.PreferencesRepository
 import com.spendwise.data.repository.TransactionRepository
+import com.spendwise.domain.categorizer.CategoryClassifier
+import com.spendwise.domain.model.AppCategory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -26,7 +29,8 @@ data class SmsImportResult(
 class SmsInboxImporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val transactionRepository: TransactionRepository,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val categoryRepository: CategoryRepository
 ) {
     /**
      * Scans the device SMS inbox for the past [daysBack] days, parses bank debit/credit SMS,
@@ -40,9 +44,11 @@ class SmsInboxImporter @Inject constructor(
         countTowardsAllowance: Boolean = false
     ): SmsImportResult = withContext(Dispatchers.IO) {
         val prefs = preferencesRepository.userPreferences.first()
+        val effectiveDays = if (daysBack > 0) daysBack else 3650
+        val learnedRules = categoryRepository.getLearnedMerchantMap()
         val zone = ZoneId.systemDefault()
         val cutoffMillis = LocalDate.now()
-            .minusDays(daysBack.toLong())
+            .minusDays(effectiveDays.toLong())
             .atStartOfDay(zone)
             .toInstant()
             .toEpochMilli()
@@ -84,7 +90,16 @@ class SmsInboxImporter @Inject constructor(
                 val parsed = SmsParser.parse(sender, body, receivedAt) ?: continue
                 parsedCount++
 
+                val learnedKey = learnedRules[CategoryClassifier.normalizeMerchant(parsed.merchant)]
+                val (resolvedCat, customCatKey) = if (!learnedKey.isNullOrBlank()) {
+                    AppCategory.splitKey(learnedKey)
+                } else {
+                    parsed.category to parsed.customCategoryKey
+                }
+
                 val toInsert = parsed.copy(
+                    category = resolvedCat,
+                    customCategoryKey = customCatKey,
                     includeInBudget = if (parsed.isCredit && countTowardsAllowance) {
                         prefs.includeCreditsInBudget
                     } else {
