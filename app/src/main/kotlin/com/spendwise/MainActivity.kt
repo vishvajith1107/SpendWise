@@ -164,7 +164,7 @@ class MainActivity : FragmentActivity() {
                                     lifecycleScope.launch {
                                         preferencesRepository.completeInitialSetup(
                                             budgetPeriod = period,
-                                            dailyBudget = amount,
+                                            limitAmount = amount,
                                             dataRetentionDays = retentionDays,
                                             pinHash = pinHash,
                                             biometricEnabled = biometric

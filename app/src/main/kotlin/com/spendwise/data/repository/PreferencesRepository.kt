@@ -147,6 +147,8 @@ class PreferencesRepository @Inject constructor(
             prefs[KEY_BIOMETRIC_ENABLED] = biometricEnabled
             if (!pinHash.isNullOrBlank()) {
                 prefs[KEY_PIN_HASH] = pinHash
+            } else {
+                prefs.remove(KEY_PIN_HASH)
             }
             if (prefs[KEY_BUDGET_START_EPOCH_DAY] == null || prefs[KEY_BUDGET_START_EPOCH_DAY] == 0L) {
                 prefs[KEY_BUDGET_START_EPOCH_DAY] = LocalDate.now().toEpochDay()
