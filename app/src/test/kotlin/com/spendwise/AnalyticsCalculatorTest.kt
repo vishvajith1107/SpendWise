@@ -25,6 +25,7 @@ class AnalyticsCalculatorTest {
         return Transaction(
             amount = amount,
             merchant = merchant,
+            description = "",
             dateTime = d.atTime(12, 0),
             date = d,
             bank = bank,
