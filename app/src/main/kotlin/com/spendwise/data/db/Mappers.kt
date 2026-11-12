@@ -25,6 +25,7 @@ fun TransactionEntity.toDomain(): Transaction {
         bank = bank,
         isCredit = isCredit,
         includeInBudget = includeInBudget,
+        excludeFromBudget = excludeFromBudget,
         category = ExpenseCategory.fromStorageKey(category)
     )
 }
@@ -44,6 +45,7 @@ fun Transaction.toEntity(): TransactionEntity {
         bank = bank,
         isCredit = isCredit,
         includeInBudget = includeInBudget,
+        excludeFromBudget = excludeFromBudget,
         category = category.name
     )
 }

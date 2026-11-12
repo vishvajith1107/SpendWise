@@ -76,6 +76,9 @@ fun TransactionFormSheet(
             }
         )
     }
+    var countInAllowance by remember(initialTransaction) {
+        mutableStateOf(!(initialTransaction?.excludeFromBudget ?: false))
+    }
     var selectedDate by remember(initialTransaction) {
         mutableStateOf(initialTransaction?.date ?: today)
     }
@@ -263,6 +266,39 @@ fun TransactionFormSheet(
                         )
                     }
                 }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Spend From Daily Allowance",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (countInAllowance) "Subtracts this expense from your daily limit"
+                                else "Saved in History & Analytics only (allowance unchanged)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = countInAllowance,
+                            onCheckedChange = { countInAllowance = it }
+                        )
+                    }
+                }
             }
 
             // Date selector
@@ -401,6 +437,7 @@ fun TransactionFormSheet(
                                 date = selectedDate,
                                 isCredit = isCredit,
                                 includeInBudget = if (isCredit) includeInBudget else false,
+                                excludeFromBudget = if (isCredit) false else !countInAllowance,
                                 category = category
                             )
                         } else {
@@ -414,6 +451,7 @@ fun TransactionFormSheet(
                                 bank = "Manual",
                                 isCredit = isCredit,
                                 includeInBudget = if (isCredit) includeInBudget else false,
+                                excludeFromBudget = if (isCredit) false else !countInAllowance,
                                 category = category
                             )
                         }

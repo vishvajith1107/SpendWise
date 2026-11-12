@@ -37,7 +37,8 @@ class AnalyticsCalculatorTest {
     @Test
     fun `computes totals, streak, peak day, categories and top merchants over 7D`() {
         val transactions = listOf(
-            tx(daysAgo = 3, amount = 250.0, merchant = "Uber", category = ExpenseCategory.TRANSPORT, bank = "ICICI"),
+            tx(daysAgo = 3, amount = 250.0, merchant = "Uber", category = ExpenseCategory.TRANSPORT, bank = "ICICI")
+                .copy(excludeFromBudget = true),
             tx(daysAgo = 2, amount = 100.0, merchant = "Swiggy", category = ExpenseCategory.FOOD, bank = "HDFC"),
             tx(daysAgo = 1, amount = 50.0, merchant = "Swiggy", category = ExpenseCategory.FOOD, bank = "HDFC"),
             tx(daysAgo = 0, amount = 80.0, merchant = "Zepto", category = ExpenseCategory.GROCERIES, bank = "HDFC"),

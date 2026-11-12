@@ -29,7 +29,11 @@ object AppModule {
             SpendWiseDatabase::class.java,
             "spendwise.db"
         )
-            .addMigrations(SpendWiseDatabase.MIGRATION_1_2, SpendWiseDatabase.MIGRATION_2_3)
+            .addMigrations(
+                SpendWiseDatabase.MIGRATION_1_2,
+                SpendWiseDatabase.MIGRATION_2_3,
+                SpendWiseDatabase.MIGRATION_3_4
+            )
             .build()
 
     @Provides

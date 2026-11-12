@@ -31,8 +31,14 @@ class SmsInboxImporter @Inject constructor(
     /**
      * Scans the device SMS inbox for the past [daysBack] days, parses bank debit/credit SMS,
      * and inserts any non-duplicate transactions into Room on their actual receipt dates.
+     *
+     * @param countTowardsAllowance When false (default), imported items populate History & Analytics
+     * without changing the daily spending allowance or pushing back the rollover start date.
      */
-    suspend fun importRecentSms(daysBack: Int = 30): SmsImportResult = withContext(Dispatchers.IO) {
+    suspend fun importRecentSms(
+        daysBack: Int = 30,
+        countTowardsAllowance: Boolean = false
+    ): SmsImportResult = withContext(Dispatchers.IO) {
         val prefs = preferencesRepository.userPreferences.first()
         val zone = ZoneId.systemDefault()
         val cutoffMillis = LocalDate.now()
@@ -78,11 +84,14 @@ class SmsInboxImporter @Inject constructor(
                 val parsed = SmsParser.parse(sender, body, receivedAt) ?: continue
                 parsedCount++
 
-                val toInsert = if (parsed.isCredit) {
-                    parsed.copy(includeInBudget = prefs.includeCreditsInBudget)
-                } else {
-                    parsed
-                }
+                val toInsert = parsed.copy(
+                    includeInBudget = if (parsed.isCredit && countTowardsAllowance) {
+                        prefs.includeCreditsInBudget
+                    } else {
+                        false
+                    },
+                    excludeFromBudget = !countTowardsAllowance
+                )
 
                 if (transactionRepository.importTransactionIfNew(toInsert)) {
                     importedCount++
@@ -95,10 +104,12 @@ class SmsInboxImporter @Inject constructor(
             }
         }
 
-        if (earliestImportedDate != null) {
+        if (countTowardsAllowance && earliestImportedDate != null) {
             if (prefs.budgetStartEpochDay == 0L || earliestImportedDate!!.toEpochDay() < prefs.budgetStartEpochDay) {
                 preferencesRepository.updateBudgetStartDay(earliestImportedDate!!.toEpochDay())
             }
+        } else if (!countTowardsAllowance && prefs.budgetStartEpochDay <= 0L) {
+            preferencesRepository.ensureBudgetStartDayInitialized(LocalDate.now().toEpochDay())
         }
 
         SmsImportResult(

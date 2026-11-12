@@ -79,9 +79,12 @@ fun TransactionItem(
                 }
                 val upiLabel = if (!transaction.upiRef.isNullOrBlank())
                     " · UPI:${transaction.upiRef.takeLast(4)}" else ""
-                val creditTag = if (transaction.isCredit) {
-                    if (transaction.includeInBudget) " · Added to limit" else " · Excluded"
-                } else ""
+                val creditTag = when {
+                    transaction.isCredit && transaction.includeInBudget -> " · Added to limit"
+                    transaction.isCredit -> " · Excluded"
+                    transaction.excludeFromBudget -> " · History only"
+                    else -> ""
+                }
                 Text(
                     text = "${transaction.category.displayName} · ${transaction.dateTime.format(timeFormatter)}$sourceTag$upiLabel$creditTag",
                     style = MaterialTheme.typography.labelSmall,

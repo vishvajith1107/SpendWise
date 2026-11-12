@@ -63,6 +63,7 @@ class BackupRestoreHelper @Inject constructor(
                         put("bank", tx.bank)
                         put("isCredit", tx.isCredit)
                         put("includeInBudget", tx.includeInBudget)
+                        put("excludeFromBudget", tx.excludeFromBudget)
                         put("category", tx.category.name)
                     })
                 }
@@ -132,6 +133,7 @@ class BackupRestoreHelper @Inject constructor(
                 bank = obj.optString("bank", "Bank"),
                 isCredit = obj.optBoolean("isCredit", false),
                 includeInBudget = obj.optBoolean("includeInBudget", false),
+                excludeFromBudget = obj.optBoolean("excludeFromBudget", false),
                 category = ExpenseCategory.fromStorageKey(obj.optString("category"))
             )
             if (tx.amount > 0.0) {

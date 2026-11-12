@@ -97,15 +97,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun scanSmsInbox() {
+    fun scanSmsInbox(countTowardsAllowance: Boolean = false) {
         if (_isBusy.value) return
         viewModelScope.launch {
             _isBusy.value = true
             try {
-                val result = smsInboxImporter.importRecentSms(daysBack = 30)
+                val result = smsInboxImporter.importRecentSms(
+                    daysBack = 30,
+                    countTowardsAllowance = countTowardsAllowance
+                )
                 BudgetWidgetUpdater.update(app)
+                val modeLabel = if (countTowardsAllowance) "counted in allowance" else "history only"
                 _statusMessage.value = if (result.importedCount > 0) {
-                    "Imported ${result.importedCount} transaction(s) from ${result.scannedCount} SMS"
+                    "Imported ${result.importedCount} transaction(s) ($modeLabel) from ${result.scannedCount} SMS"
                 } else {
                     "Scanned ${result.scannedCount} SMS: no new transactions found (${result.skippedDuplicates} already saved)"
                 }

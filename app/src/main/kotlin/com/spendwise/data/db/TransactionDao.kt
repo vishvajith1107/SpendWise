@@ -15,10 +15,10 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY dateTimeEpoch DESC")
     fun getAllTransactions(): Flow<List<TransactionEntity>>
 
-    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay = :epochDay AND isCredit = 0")
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay = :epochDay AND isCredit = 0 AND excludeFromBudget = 0")
     suspend fun getTotalSpentForDay(epochDay: Long): Double?
 
-    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay >= :fromEpochDay AND dateEpochDay < :toEpochDay AND isCredit = 0")
+    @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay >= :fromEpochDay AND dateEpochDay < :toEpochDay AND isCredit = 0 AND excludeFromBudget = 0")
     suspend fun getTotalSpentBetween(fromEpochDay: Long, toEpochDay: Long): Double?
 
     @Query("SELECT SUM(amount) FROM transactions WHERE dateEpochDay = :epochDay AND isCredit = 1 AND includeInBudget = 1")
@@ -51,6 +51,6 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY dateTimeEpoch DESC LIMIT 1")
     suspend fun getLatestTransaction(): TransactionEntity?
 
-    @Query("SELECT MIN(dateEpochDay) FROM transactions")
+    @Query("SELECT MIN(dateEpochDay) FROM transactions WHERE excludeFromBudget = 0")
     suspend fun getEarliestEpochDay(): Long?
 }

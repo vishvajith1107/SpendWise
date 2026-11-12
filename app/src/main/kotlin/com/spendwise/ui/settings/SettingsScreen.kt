@@ -66,6 +66,7 @@ fun SettingsScreen(
     var pinSetupStage by remember { mutableStateOf(0) }
     var firstPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
+    var showSmsImportChoiceDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(statusMessage) {
         statusMessage?.let {
@@ -78,7 +79,7 @@ fun SettingsScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            viewModel.scanSmsInbox()
+            showSmsImportChoiceDialog = true
         } else {
             viewModel.reportStatus("SMS permission denied. Allow SMS access in App Info to scan your inbox.")
         }
@@ -396,7 +397,7 @@ fun SettingsScreen(
                                 Manifest.permission.READ_SMS
                             ) == PackageManager.PERMISSION_GRANTED
                             if (hasReadSms) {
-                                viewModel.scanSmsInbox()
+                                showSmsImportChoiceDialog = true
                             } else {
                                 smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
                             }
@@ -691,5 +692,44 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    if (showSmsImportChoiceDialog) {
+        AlertDialog(
+            onDismissRequest = { showSmsImportChoiceDialog = false },
+            title = { Text("Import Past Bank SMS", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Should imported transactions from the last 30 days count against your daily allowance, or just be added to History & Analytics?",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Button(
+                        onClick = {
+                            showSmsImportChoiceDialog = false
+                            viewModel.scanSmsInbox(countTowardsAllowance = false)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Transfer History Only (Recommended)")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showSmsImportChoiceDialog = false
+                            viewModel.scanSmsInbox(countTowardsAllowance = true)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Count Towards Daily Allowance")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showSmsImportChoiceDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
