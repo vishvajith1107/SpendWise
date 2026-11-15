@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Store
@@ -17,6 +18,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +40,7 @@ import com.spendwise.domain.analytics.AnalyticsPeriod
 import com.spendwise.domain.analytics.AnalyticsSnapshot
 import com.spendwise.domain.analytics.CategorySpend
 import com.spendwise.domain.analytics.DailySpendPoint
+import com.spendwise.ui.components.TransactionFormSheet
 import com.spendwise.ui.components.icon
 import com.spendwise.ui.components.tintColor
 import java.time.format.DateTimeFormatter
@@ -49,6 +54,7 @@ fun AnalyticsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isDark = isSystemInDarkTheme()
     val positiveGreen = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
+    var viewingCategorySpend by remember { mutableStateOf<CategorySpend?>(null) }
 
     Scaffold(
         topBar = {
@@ -151,7 +157,10 @@ fun AnalyticsScreen(
                     CategoryBreakdownCard(
                         categories = snapshot.categoryBreakdown,
                         totalSpent = snapshot.totalSpent,
-                        currency = uiState.currency
+                        currency = uiState.currency,
+                        onCategoryClick = { clickedCat ->
+                            viewingCategorySpend = clickedCat
+                        }
                     )
                 }
             }
@@ -291,6 +300,33 @@ fun AnalyticsScreen(
                 }
             }
         }
+    }
+
+    viewingCategorySpend?.let { catSpend ->
+        CategoryTransactionsSheet(
+            categorySpend = catSpend,
+            allTransactions = uiState.allTransactions,
+            categories = uiState.categories,
+            currency = uiState.currency,
+            initialPeriod = uiState.selectedPeriod,
+            onDismiss = { viewingCategorySpend = null },
+            onTransactionClick = { tx -> viewModel.startEditing(tx) },
+            onTransactionDelete = { tx -> viewModel.deleteTransaction(tx) }
+        )
+    }
+
+    uiState.editingTransaction?.let { editing ->
+        TransactionFormSheet(
+            currency = uiState.currency,
+            initialTransaction = editing,
+            defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
+            categories = uiState.categories,
+            learnedMerchantRules = uiState.learnedMerchantRules,
+            onCreateCategory = viewModel::createCustomCategory,
+            onDismiss = { viewModel.stopEditing() },
+            onSave = { updated -> viewModel.updateTransaction(updated) },
+            onDelete = { toDelete -> viewModel.deleteTransaction(toDelete) }
+        )
     }
 }
 
@@ -512,18 +548,31 @@ private fun DailyTrendCard(
 private fun CategoryBreakdownCard(
     categories: List<CategorySpend>,
     totalSpent: Double,
-    currency: String
+    currency: String,
+    onCategoryClick: (CategorySpend) -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                "Spending by Category",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Spending by Category",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "Tap to view",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
 
             Box(
                 modifier = Modifier
@@ -567,57 +616,81 @@ private fun CategoryBreakdownCard(
 
             categories.forEach { catSpend ->
                 val catColor = androidx.compose.ui.graphics.Color(catSpend.colorHex)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    onClick = { onCategoryClick(catSpend) },
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp, horizontal = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(catColor.copy(alpha = 0.14f)),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    com.spendwise.ui.components.iconByKey(catSpend.iconKey),
-                                    contentDescription = null,
-                                    tint = catColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(catColor.copy(alpha = 0.14f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        com.spendwise.ui.components.iconByKey(catSpend.iconKey),
+                                        contentDescription = null,
+                                        tint = catColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        catSpend.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        "${catSpend.count} tx · ${"%.1f".format(catSpend.percentage)}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
-                            Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 Text(
-                                    catSpend.displayName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
+                                    "$currency${"%.2f".format(catSpend.amount)}",
+                                    fontWeight = FontWeight.SemiBold
                                 )
-                                Text(
-                                    "${catSpend.count} tx · ${"%.1f".format(catSpend.percentage)}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Icon(
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = "View category transactions",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
-                        Text(
-                            "$currency${"%.2f".format(catSpend.amount)}",
-                            fontWeight = FontWeight.SemiBold
+                        LinearProgressIndicator(
+                            progress = { (catSpend.percentage / 100f).coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = catColor,
+                            trackColor = catColor.copy(alpha = 0.15f)
                         )
                     }
-                    LinearProgressIndicator(
-                        progress = { (catSpend.percentage / 100f).coerceIn(0f, 1f) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = catColor,
-                        trackColor = catColor.copy(alpha = 0.15f)
-                    )
                 }
             }
         }
