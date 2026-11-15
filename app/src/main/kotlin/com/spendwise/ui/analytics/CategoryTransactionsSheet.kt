@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.spendwise.domain.analytics.AnalyticsPeriod
 import com.spendwise.domain.analytics.CategorySpend
 import com.spendwise.domain.model.AppCategory
@@ -40,10 +42,6 @@ fun CategoryTransactionsSheet(
     onTransactionClick: (Transaction) -> Unit,
     onTransactionDelete: (Transaction) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { false }
-    )
     var selectedPeriod by remember(categorySpend.categoryKey) { mutableStateOf(initialPeriod) }
     val today = remember { LocalDate.now() }
     val yesterday = remember(today) { today.minusDays(1) }
@@ -93,21 +91,43 @@ fun CategoryTransactionsSheet(
         }
     }
 
-    androidx.activity.compose.BackHandler(enabled = true) {
-        // Locked: only close button dismisses
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = { /* Locked: only explicit close button dismisses */ },
-        sheetState = sheetState
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) { /* Don't dismiss on outside tap */ },
+            contentAlignment = Alignment.BottomCenter
         ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) { /* Consume taps inside sheet */ },
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 16.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
             // Category Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -320,4 +340,5 @@ fun CategoryTransactionsSheet(
             }
         }
     }
+}
 }

@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.Transaction
 import com.spendwise.ui.components.icon
@@ -44,47 +46,49 @@ fun PendingUpiCategorizationSheet(
     onCategorize: (Transaction, String) -> Unit,
     onEditDetails: (Transaction) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { false }
-    )
-    val dateTimeFmt = remember { DateTimeFormatter.ofPattern("dd MMM, hh:mm a") }
-    val isDark = isSystemInDarkTheme()
-    val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
-
-    // Intercept back swipes so scrolling categories horizontally near screen edges never dismisses the sheet
-    androidx.activity.compose.BackHandler(enabled = true) {
-        // Locked: only close button or done dismisses
-    }
-
-    val sortedCategories = remember(categories, categoryUsageCounts) {
-        if (categoryUsageCounts.isEmpty()) {
-            categories
-        } else {
-            categories.sortedWith(
-                compareByDescending<AppCategory> { categoryUsageCounts[it.key] ?: 0 }
-                    .thenBy { it.displayName.lowercase(Locale.ROOT) }
-            )
-        }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = { /* Locked: only explicit close button or done dismisses */ },
-        sheetState = sheetState
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) { /* Don't dismiss on outside tap */ },
+            contentAlignment = Alignment.BottomCenter
         ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) { /* Consume taps inside sheet */ },
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 16.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -275,4 +279,5 @@ fun PendingUpiCategorizationSheet(
             }
         }
     }
+}
 }

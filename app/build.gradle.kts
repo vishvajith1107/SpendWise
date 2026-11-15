@@ -14,8 +14,8 @@ android {
         applicationId = "com.spendwise"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "2.2.7"
+        versionCode = 12
+        versionName = "2.2.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
