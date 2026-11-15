@@ -253,8 +253,12 @@ private fun RecurringRuleFormSheet(
         confirmValueChange = { false }
     )
 
+    androidx.activity.compose.BackHandler(enabled = true) {
+        // Locked: only close button dismisses
+    }
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { /* Locked: only explicit close button dismisses */ },
         sheetState = sheetState
     ) {
         Column(

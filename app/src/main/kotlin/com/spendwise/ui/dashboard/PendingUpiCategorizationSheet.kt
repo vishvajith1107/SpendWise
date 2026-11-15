@@ -52,6 +52,11 @@ fun PendingUpiCategorizationSheet(
     val isDark = isSystemInDarkTheme()
     val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
 
+    // Intercept back swipes so scrolling categories horizontally near screen edges never dismisses the sheet
+    androidx.activity.compose.BackHandler(enabled = true) {
+        // Locked: only close button or done dismisses
+    }
+
     val sortedCategories = remember(categories, categoryUsageCounts) {
         if (categoryUsageCounts.isEmpty()) {
             categories
@@ -64,7 +69,7 @@ fun PendingUpiCategorizationSheet(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { /* Locked: only explicit close button or done dismisses */ },
         sheetState = sheetState
     ) {
         Column(

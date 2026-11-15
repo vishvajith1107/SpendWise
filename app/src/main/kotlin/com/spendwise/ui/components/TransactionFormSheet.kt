@@ -55,6 +55,11 @@ fun TransactionFormSheet(
     val today = remember { LocalDate.now() }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy") }
 
+    // Intercept back swipes so scrolling left/right near screen edges never dismisses the sheet
+    androidx.activity.compose.BackHandler(enabled = true) {
+        // Locked: only the close button or save/delete dismisses
+    }
+
     val sortedCategories = remember(categories, categoryUsageCounts) {
         if (categoryUsageCounts.isEmpty()) {
             categories
@@ -110,7 +115,7 @@ fun TransactionFormSheet(
     )
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { /* Locked: only explicit close button or save dismisses */ },
         sheetState = sheetState
     ) {
         Column(

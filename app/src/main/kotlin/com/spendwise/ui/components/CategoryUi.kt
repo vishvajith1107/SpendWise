@@ -90,10 +90,10 @@ fun CategoryEditorDialog(
     var showError by remember { mutableStateOf(false) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { /* Locked: only close button, cancel, or save dismisses */ },
         properties = DialogProperties(
             dismissOnClickOutside = false,
-            dismissOnBackPress = true
+            dismissOnBackPress = false
         ),
         title = {
             Row(
