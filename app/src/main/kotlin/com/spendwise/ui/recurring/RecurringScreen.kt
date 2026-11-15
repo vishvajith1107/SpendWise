@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.PlayArrow
@@ -247,7 +248,15 @@ private fun RecurringRuleFormSheet(
     var autoLog by remember(initialRule) { mutableStateOf(initialRule?.autoLog ?: true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { false }
+    )
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -256,11 +265,21 @@ private fun RecurringRuleFormSheet(
                 .padding(bottom = 36.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                if (isEdit) "Edit Recurring Rule" else "New Recurring Bill / Income",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (isEdit) "Edit Recurring Rule" else "New Recurring Bill / Income",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(

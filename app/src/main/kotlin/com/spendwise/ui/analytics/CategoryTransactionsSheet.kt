@@ -40,7 +40,10 @@ fun CategoryTransactionsSheet(
     onTransactionClick: (Transaction) -> Unit,
     onTransactionDelete: (Transaction) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { false }
+    )
     var selectedPeriod by remember(categorySpend.categoryKey) { mutableStateOf(initialPeriod) }
     val today = remember { LocalDate.now() }
     val yesterday = remember(today) { today.minusDays(1) }

@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.spendwise.domain.model.AppCategory
 import com.spendwise.domain.model.ExpenseCategory
 
@@ -90,11 +91,24 @@ fun CategoryEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            dismissOnClickOutside = false,
+            dismissOnBackPress = true
+        ),
         title = {
-            Text(
-                if (isEdit) "Edit Category" else "New Category",
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (isEdit) "Edit Category" else "New Category",
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

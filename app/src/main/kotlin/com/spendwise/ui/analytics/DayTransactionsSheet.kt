@@ -38,7 +38,10 @@ fun DayTransactionsSheet(
     onTransactionClick: (Transaction) -> Unit,
     onTransactionDelete: (Transaction) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { false }
+    )
     val today = remember { LocalDate.now() }
     val yesterday = remember(today) { today.minusDays(1) }
     val fullDateFmt = remember { DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy") }

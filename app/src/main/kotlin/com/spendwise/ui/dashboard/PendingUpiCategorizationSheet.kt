@@ -44,7 +44,10 @@ fun PendingUpiCategorizationSheet(
     onCategorize: (Transaction, String) -> Unit,
     onEditDetails: (Transaction) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { false }
+    )
     val dateTimeFmt = remember { DateTimeFormatter.ofPattern("dd MMM, hh:mm a") }
     val isDark = isSystemInDarkTheme()
     val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)

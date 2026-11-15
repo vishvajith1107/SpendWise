@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -103,7 +104,15 @@ fun TransactionFormSheet(
     var showRawSms by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { false }
+    )
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -120,25 +129,34 @@ fun TransactionFormSheet(
                 Text(
                     text = if (isEdit) "Edit Transaction" else "Add Manual Entry",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-                if (initialTransaction != null && !initialTransaction.isManual) {
-                    AssistChip(
-                        onClick = { showRawSms = !showRawSms },
-                        label = {
-                            Text(
-                                "${initialTransaction.bank.ifBlank { "Bank" }} SMS",
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Sms,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (initialTransaction != null && !initialTransaction.isManual) {
+                        AssistChip(
+                            onClick = { showRawSms = !showRawSms },
+                            label = {
+                                Text(
+                                    "${initialTransaction.bank.ifBlank { "Bank" }} SMS",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Sms,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
                 }
             }
 
