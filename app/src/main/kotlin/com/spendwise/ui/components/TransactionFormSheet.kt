@@ -565,10 +565,11 @@ fun TransactionFormSheet(
                     Spacer(Modifier.width(8.dp))
                     Text(if (isEdit) "Save Changes" else if (isCredit) "Save Credit" else "Save Expense")
                 }
-                }
             }
         }
     }
+}
+}
 }
 
     if (showNewCategoryDialog && onCreateCategory != null) {
