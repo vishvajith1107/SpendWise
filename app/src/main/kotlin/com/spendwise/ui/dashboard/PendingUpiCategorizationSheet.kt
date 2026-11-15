@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,6 +47,21 @@ fun PendingUpiCategorizationSheet(
     onCategorize: (Transaction, String) -> Unit,
     onEditDetails: (Transaction) -> Unit
 ) {
+    val dateTimeFmt = remember { DateTimeFormatter.ofPattern("dd MMM, hh:mm a") }
+    val isDark = isSystemInDarkTheme()
+    val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
+
+    val sortedCategories = remember(categories, categoryUsageCounts) {
+        if (categoryUsageCounts.isEmpty()) {
+            categories
+        } else {
+            categories.sortedWith(
+                compareByDescending<AppCategory> { categoryUsageCounts[it.key] ?: 0 }
+                    .thenBy { it.displayName.lowercase(Locale.ROOT) }
+            )
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(

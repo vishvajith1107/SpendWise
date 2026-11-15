@@ -1,6 +1,7 @@
 package com.spendwise.ui.analytics
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -40,6 +41,32 @@ fun DayTransactionsSheet(
     onTransactionClick: (Transaction) -> Unit,
     onTransactionDelete: (Transaction) -> Unit
 ) {
+    val today = remember { LocalDate.now() }
+    val yesterday = remember(today) { today.minusDays(1) }
+    val fullDateFmt = remember { DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy") }
+    val isDark = isSystemInDarkTheme()
+    val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
+
+    val sortedTransactions = remember(transactions) {
+        transactions.sortedWith(compareByDescending<Transaction> { it.dateTime }.thenByDescending { it.id })
+    }
+
+    val totalSpent = remember(transactions) {
+        transactions.filter { !it.isCredit && !it.excludeFromBudget }.sumOf { it.amount }
+    }
+    val totalCredited = remember(transactions) {
+        transactions.filter { it.isCredit && it.includeInBudget }.sumOf { it.amount }
+    }
+    val grossDebit = remember(transactions) {
+        transactions.filter { !it.isCredit }.sumOf { it.amount }
+    }
+
+    val relativeDayLabel = when (date) {
+        today -> "Today"
+        yesterday -> "Yesterday"
+        else -> null
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
