@@ -237,7 +237,7 @@ fun DayTransactionsSheet(
                         TransactionItem(
                             transaction = tx,
                             currency = currency,
-                            categories = categories,
+                            category = categories.firstOrNull { it.key == tx.effectiveCategoryKey },
                             onClick = { onTransactionClick(tx) },
                             onDelete = { onTransactionDelete(tx) }
                         )
