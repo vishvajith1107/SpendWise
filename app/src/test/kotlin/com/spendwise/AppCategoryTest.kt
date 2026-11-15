@@ -60,4 +60,21 @@ class AppCategoryTest {
         assertEquals("OTHER", fallback.key)
         assertNull(AppCategory.splitKey("FOOD").second)
     }
+
+    @Test
+    fun `categories sort by usage counts descending`() {
+        val defaults = AppCategory.builtInDefaults()
+        val usageCounts = mapOf(
+            "TRANSPORT" to 50,
+            "FOOD" to 120,
+            "BILLS" to 10
+        )
+        val sorted = defaults.sortedWith(
+            compareByDescending<AppCategory> { usageCounts[it.key] ?: 0 }
+                .thenBy { it.displayName.lowercase() }
+        )
+        assertEquals("FOOD", sorted[0].key)
+        assertEquals("TRANSPORT", sorted[1].key)
+        assertEquals("BILLS", sorted[2].key)
+    }
 }

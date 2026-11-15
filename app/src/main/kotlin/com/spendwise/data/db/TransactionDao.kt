@@ -67,4 +67,15 @@ interface TransactionDao {
             "FROM transactions"
     )
     fun observeBudgetSignature(): Flow<String>
+
+    @Query("SELECT category, COUNT(*) as count FROM transactions GROUP BY category")
+    fun getCategoryUsageCounts(): Flow<List<CategoryUsageRow>>
+
+    @Query("SELECT * FROM transactions WHERE isManual = 0 AND category = 'OTHER' ORDER BY dateTimeEpoch DESC")
+    fun getUncategorizedAutoTransactions(): Flow<List<TransactionEntity>>
 }
+
+data class CategoryUsageRow(
+    val category: String,
+    val count: Int
+)

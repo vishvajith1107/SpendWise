@@ -23,6 +23,10 @@ data class DashboardUiState(
     val budgetState: BudgetState? = null,
     val todayTransactions: List<Transaction> = emptyList(),
     val categories: List<AppCategory> = emptyList(),
+    val categoryUsageCounts: Map<String, Int> = emptyMap(),
+    val uncategorizedUpiTransactions: List<Transaction> = emptyList(),
+    val showUpiCategorizePrompt: Boolean = false,
+    val showUpiCategorizeSheet: Boolean = false,
     val learnedMerchantRules: Map<String, String> = emptyMap(),
     val upcomingRecurringCount: Int = 0,
     val isLoading: Boolean = true,
@@ -30,6 +34,26 @@ data class DashboardUiState(
     val editingTransaction: Transaction? = null,
     val defaultIncludeCreditsInBudget: Boolean = false,
     val errorMessage: String? = null
+)
+
+private data class DashboardBaseData(
+    val transactions: List<Transaction>,
+    val prefs: com.spendwise.data.repository.UserPreferences,
+    val rules: List<com.spendwise.domain.model.RecurringRule>,
+    val categories: List<AppCategory>
+)
+
+private data class DashboardExtraDbData(
+    val merchantRules: List<com.spendwise.data.db.MerchantCategoryRuleEntity>,
+    val categoryUsageCounts: Map<String, Int>,
+    val uncategorizedUpiTransactions: List<Transaction>
+)
+
+private data class DashboardUiControlData(
+    val showAddSheet: Boolean,
+    val editingTransaction: Transaction?,
+    val sessionDismissedUpiPrompt: Boolean,
+    val showUpiCategorizeSheet: Boolean
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -46,6 +70,8 @@ class DashboardViewModel @Inject constructor(
     private val _currentDate = MutableStateFlow(LocalDate.now())
     private val _showAddSheet = MutableStateFlow(false)
     private val _editingTransaction = MutableStateFlow<Transaction?>(null)
+    private val _sessionDismissedUpiPrompt = MutableStateFlow(false)
+    private val _showUpiCategorizeSheet = MutableStateFlow(false)
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
@@ -56,37 +82,57 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _currentDate
                 .flatMapLatest { today ->
-                    combine(
-                        combine(
-                            transactionRepository.getTransactionsForDay(today),
-                            transactionRepository.observeBudgetSignature(),
-                            preferencesRepository.userPreferences,
-                            recurringRepository.getAllRules(),
-                            categoryRepository.getAllCategories()
-                        ) { txs, _, prefs, rules, cats ->
-                            Triple(txs, prefs, rules to cats)
-                        },
+                    val baseFlow = combine(
+                        transactionRepository.getTransactionsForDay(today),
+                        transactionRepository.observeBudgetSignature(),
+                        preferencesRepository.userPreferences,
+                        recurringRepository.getAllRules(),
+                        categoryRepository.getAllCategories()
+                    ) { txs, _, prefs, rules, cats ->
+                        DashboardBaseData(txs, prefs, rules, cats)
+                    }
+
+                    val extraDbFlow = combine(
                         categoryRepository.getMerchantRules(),
+                        transactionRepository.getCategoryUsageCounts(),
+                        transactionRepository.getUncategorizedAutoTransactions()
+                    ) { rules, usageCounts, uncategorizedTxs ->
+                        DashboardExtraDbData(rules, usageCounts, uncategorizedTxs)
+                    }
+
+                    val uiControlFlow = combine(
                         _showAddSheet,
-                        _editingTransaction
-                    ) { data, merchantRules, showSheet, editingTx ->
-                        val (transactions, prefs, rulesAndCats) = data
-                        val (rules, categories) = rulesAndCats
-                        val budgetState = budgetEngine.calculateBudgetState(prefs, today)
-                        val upcomingDue = rules.count {
+                        _editingTransaction,
+                        _sessionDismissedUpiPrompt,
+                        _showUpiCategorizeSheet
+                    ) { showSheet, editingTx, dismissedPrompt, showUpiSheet ->
+                        DashboardUiControlData(showSheet, editingTx, dismissedPrompt, showUpiSheet)
+                    }
+
+                    combine(baseFlow, extraDbFlow, uiControlFlow) { base, extra, uiControl ->
+                        val budgetState = budgetEngine.calculateBudgetState(base.prefs, today)
+                        val upcomingDue = base.rules.count {
                             it.isActive && !it.nextDueDate.isAfter(today.plusDays(3))
                         }
+                        val showPrompt = extra.uncategorizedUpiTransactions.isNotEmpty() &&
+                            !uiControl.sessionDismissedUpiPrompt &&
+                            !uiControl.showUpiCategorizeSheet
+
                         BudgetWidgetUpdater.update(app)
                         DashboardUiState(
                             budgetState = budgetState,
-                            todayTransactions = transactions,
-                            categories = categories,
-                            learnedMerchantRules = merchantRules.associate { it.normalizedMerchant to it.categoryKey },
+                            todayTransactions = base.transactions,
+                            categories = base.categories,
+                            categoryUsageCounts = extra.categoryUsageCounts,
+                            uncategorizedUpiTransactions = extra.uncategorizedUpiTransactions,
+                            showUpiCategorizePrompt = showPrompt,
+                            showUpiCategorizeSheet = uiControl.showUpiCategorizeSheet,
+                            learnedMerchantRules = extra.merchantRules.associate { it.normalizedMerchant to it.categoryKey },
                             upcomingRecurringCount = upcomingDue,
                             isLoading = false,
-                            showAddTransactionSheet = showSheet,
-                            editingTransaction = editingTx,
-                            defaultIncludeCreditsInBudget = prefs.includeCreditsInBudget
+                            showAddTransactionSheet = uiControl.showAddSheet,
+                            editingTransaction = uiControl.editingTransaction,
+                            defaultIncludeCreditsInBudget = base.prefs.includeCreditsInBudget
                         )
                     }
                 }
@@ -176,6 +222,30 @@ class DashboardViewModel @Inject constructor(
             transactionRepository.deleteTransaction(transaction)
             BudgetWidgetUpdater.update(app)
             stopEditing()
+        }
+    }
+
+    fun dismissUpiPromptForSession() {
+        _sessionDismissedUpiPrompt.value = true
+    }
+
+    fun openUpiCategorizeSheet() {
+        _sessionDismissedUpiPrompt.value = true
+        _showUpiCategorizeSheet.value = true
+    }
+
+    fun hideUpiCategorizeSheet() {
+        _showUpiCategorizeSheet.value = false
+    }
+
+    fun categorizeTransaction(transaction: Transaction, categoryKey: String) {
+        viewModelScope.launch {
+            val (builtIn, customKey) = AppCategory.splitKey(categoryKey)
+            val updated = transaction.copy(category = builtIn, customCategoryKey = customKey)
+            transactionRepository.updateTransaction(updated)
+            categoryRepository.learnMerchantCategory(transaction.merchant, categoryKey)
+            initializeBudgetStartDayIfNeeded(updated)
+            BudgetWidgetUpdater.update(app)
         }
     }
 }

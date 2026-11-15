@@ -43,6 +43,7 @@ import com.spendwise.domain.analytics.DailySpendPoint
 import com.spendwise.ui.components.TransactionFormSheet
 import com.spendwise.ui.components.icon
 import com.spendwise.ui.components.tintColor
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.max
 
@@ -55,6 +56,7 @@ fun AnalyticsScreen(
     val isDark = isSystemInDarkTheme()
     val positiveGreen = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
     var viewingCategorySpend by remember { mutableStateOf<CategorySpend?>(null) }
+    var selectedDayForTransactions by remember { mutableStateOf<LocalDate?>(null) }
 
     Scaffold(
         topBar = {
@@ -169,7 +171,10 @@ fun AnalyticsScreen(
             snapshot.highestSpendDay?.let { (peakDate, peakAmount) ->
                 item {
                     val dateFmt = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy")
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        onClick = { selectedDayForTransactions = peakDate },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -179,7 +184,8 @@ fun AnalyticsScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f, fill = false)
                             ) {
                                 Icon(
                                     Icons.Default.TrendingUp,
@@ -187,19 +193,38 @@ fun AnalyticsScreen(
                                     tint = MaterialTheme.colorScheme.error
                                 )
                                 Column {
-                                    Text("Peak Spend Day", style = MaterialTheme.typography.labelMedium)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Peak Spend Day", style = MaterialTheme.typography.labelMedium)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "• Tap to view",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                     Text(
                                         peakDate.format(dateFmt),
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             }
-                            Text(
-                                "${uiState.currency}${"%.2f".format(peakAmount)}",
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 16.sp
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    "${uiState.currency}${"%.2f".format(peakAmount)}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 16.sp
+                                )
+                                Icon(
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -315,12 +340,30 @@ fun AnalyticsScreen(
         )
     }
 
+    selectedDayForTransactions?.let { day ->
+        val dayTxs = remember(uiState.allTransactions, day) {
+            uiState.allTransactions.filter { it.date == day }
+        }
+        val isPeak = uiState.snapshot?.highestSpendDay?.first == day
+        DayTransactionsSheet(
+            date = day,
+            currency = uiState.currency,
+            transactions = dayTxs,
+            categories = uiState.categories,
+            isPeakDay = isPeak,
+            onDismiss = { selectedDayForTransactions = null },
+            onTransactionClick = { tx -> viewModel.startEditing(tx) },
+            onTransactionDelete = { tx -> viewModel.deleteTransaction(tx) }
+        )
+    }
+
     uiState.editingTransaction?.let { editing ->
         TransactionFormSheet(
             currency = uiState.currency,
             initialTransaction = editing,
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
             categories = uiState.categories,
+            categoryUsageCounts = uiState.categoryUsageCounts,
             learnedMerchantRules = uiState.learnedMerchantRules,
             onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.stopEditing() },

@@ -79,6 +79,16 @@ class TransactionRepository @Inject constructor(
 
     fun observeBudgetSignature(): Flow<String> = dao.observeBudgetSignature()
 
+    fun getCategoryUsageCounts(): Flow<Map<String, Int>> =
+        dao.getCategoryUsageCounts().map { list ->
+            list.associate { it.category to it.count }
+        }
+
+    fun getUncategorizedAutoTransactions(): Flow<List<Transaction>> =
+        dao.getUncategorizedAutoTransactions().map { list ->
+            list.map { it.toDomain() }
+        }
+
     suspend fun pruneOlderThan(retentionDays: Int, today: LocalDate = LocalDate.now()): Int {
         if (retentionDays <= 0) return 0
         val cutoffEpochDay = today.minusDays(retentionDays.toLong()).toEpochDay()

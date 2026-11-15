@@ -43,6 +43,7 @@ fun TransactionFormSheet(
     initialTransaction: Transaction? = null,
     defaultIncludeCreditsInBudget: Boolean = false,
     categories: List<AppCategory> = AppCategory.builtInDefaults(),
+    categoryUsageCounts: Map<String, Int> = emptyMap(),
     learnedMerchantRules: Map<String, String> = emptyMap(),
     onCreateCategory: ((name: String, colorHex: Long, iconKey: String, onCreated: (String) -> Unit) -> Unit)? = null,
     onDismiss: () -> Unit,
@@ -52,6 +53,17 @@ fun TransactionFormSheet(
     val isEdit = initialTransaction != null
     val today = remember { LocalDate.now() }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy") }
+
+    val sortedCategories = remember(categories, categoryUsageCounts) {
+        if (categoryUsageCounts.isEmpty()) {
+            categories
+        } else {
+            categories.sortedWith(
+                compareByDescending<AppCategory> { categoryUsageCounts[it.key] ?: 0 }
+                    .thenBy { it.displayName.lowercase(Locale.ROOT) }
+            )
+        }
+    }
 
     var amountText by remember(initialTransaction) {
         mutableStateOf(initialTransaction?.let { formatAmountForInput(it.amount) } ?: "")
@@ -216,7 +228,7 @@ fun TransactionFormSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(categories, key = { it.key }) { cat ->
+                    items(sortedCategories, key = { it.key }) { cat ->
                         FilterChip(
                             selected = selectedCategoryKey == cat.key,
                             onClick = {

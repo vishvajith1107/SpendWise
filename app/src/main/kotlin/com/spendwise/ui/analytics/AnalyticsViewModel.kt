@@ -28,6 +28,7 @@ data class AnalyticsUiState(
     val selectedPeriod: AnalyticsPeriod = AnalyticsPeriod.SEVEN_DAYS,
     val allTransactions: List<Transaction> = emptyList(),
     val categories: List<AppCategory> = emptyList(),
+    val categoryUsageCounts: Map<String, Int> = emptyMap(),
     val learnedMerchantRules: Map<String, String> = emptyMap(),
     val defaultIncludeCreditsInBudget: Boolean = false,
     val editingTransaction: Transaction? = null,
@@ -76,6 +77,7 @@ class AnalyticsViewModel @Inject constructor(
             dailyBudget = effectiveDailyLimit,
             categoriesByKey = core.categories.associateBy { it.key }
         )
+        val usageCounts = core.transactions.groupingBy { it.effectiveCategoryKey }.eachCount()
         AnalyticsUiState(
             snapshot = snapshot,
             currency = core.prefs.currency,
@@ -83,6 +85,7 @@ class AnalyticsViewModel @Inject constructor(
             selectedPeriod = period,
             allTransactions = core.transactions,
             categories = core.categories,
+            categoryUsageCounts = usageCounts,
             learnedMerchantRules = core.merchantRules.associate { it.normalizedMerchant to it.categoryKey },
             defaultIncludeCreditsInBudget = core.prefs.includeCreditsInBudget,
             editingTransaction = editingTx,

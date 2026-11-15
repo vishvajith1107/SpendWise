@@ -1,0 +1,249 @@
+package com.spendwise.ui.analytics
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.spendwise.domain.model.AppCategory
+import com.spendwise.domain.model.Transaction
+import com.spendwise.ui.components.TransactionItem
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DayTransactionsSheet(
+    date: LocalDate,
+    currency: String,
+    transactions: List<Transaction>,
+    categories: List<AppCategory>,
+    isPeakDay: Boolean = false,
+    onDismiss: () -> Unit,
+    onTransactionClick: (Transaction) -> Unit,
+    onTransactionDelete: (Transaction) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val today = remember { LocalDate.now() }
+    val yesterday = remember(today) { today.minusDays(1) }
+    val fullDateFmt = remember { DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy") }
+    val isDark = isSystemInDarkTheme()
+    val creditColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
+
+    val sortedTransactions = remember(transactions) {
+        transactions.sortedWith(compareByDescending<Transaction> { it.dateTime }.thenByDescending { it.id })
+    }
+
+    val totalSpent = remember(transactions) {
+        transactions.filter { !it.isCredit && !it.excludeFromBudget }.sumOf { it.amount }
+    }
+    val totalCredited = remember(transactions) {
+        transactions.filter { it.isCredit && it.includeInBudget }.sumOf { it.amount }
+    }
+    val grossDebit = remember(transactions) {
+        transactions.filter { !it.isCredit }.sumOf { it.amount }
+    }
+
+    val relativeDayLabel = when (date) {
+        today -> "Today"
+        yesterday -> "Yesterday"
+        else -> null
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isPeakDay) MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.primaryContainer
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (isPeakDay) Icons.Default.TrendingUp else Icons.Default.ReceiptLong,
+                            contentDescription = null,
+                            tint = if (isPeakDay) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (isPeakDay) "Peak Spend Day" else (relativeDayLabel ?: "Day Transactions"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (isPeakDay && relativeDayLabel != null) {
+                                Spacer(Modifier.width(6.dp))
+                                SuggestionChip(
+                                    onClick = { },
+                                    label = { Text(relativeDayLabel, style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.height(24.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            date.format(fullDateFmt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
+
+            // Summary Card
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "Total Spent",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "$currency${"%.2f".format(grossDebit)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (grossDebit > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    if (totalCredited > 0.0) {
+                        Box(
+                            modifier = Modifier
+                                .height(28.dp)
+                                .width(1.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant)
+                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Credited",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "+$currency${"%.2f".format(totalCredited)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = creditColor
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(28.dp)
+                            .width(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "Transactions",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "${transactions.size}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Transactions list
+            if (sortedTransactions.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "No transactions found for this day",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Text(
+                    "All Transactions on this Day",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(sortedTransactions, key = { it.id }) { tx ->
+                        TransactionItem(
+                            transaction = tx,
+                            currency = currency,
+                            categories = categories,
+                            onClick = { onTransactionClick(tx) },
+                            onDelete = { onTransactionDelete(tx) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

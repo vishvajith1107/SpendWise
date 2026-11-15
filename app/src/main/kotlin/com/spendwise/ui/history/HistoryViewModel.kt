@@ -39,6 +39,7 @@ data class HistoryUiState(
     val groups: List<DailyTransactionGroup> = emptyList(),
     val filteredTransactions: List<Transaction> = emptyList(),
     val categories: List<AppCategory> = emptyList(),
+    val categoryUsageCounts: Map<String, Int> = emptyMap(),
     val learnedMerchantRules: Map<String, String> = emptyMap(),
     val totalSpentAllTime: Double = 0.0,
     val totalCreditedAllTime: Double = 0.0,
@@ -112,10 +113,12 @@ class HistoryViewModel @Inject constructor(
                 )
             }
 
+        val usageCounts = transactions.groupingBy { it.effectiveCategoryKey }.eachCount()
         HistoryUiState(
             groups = groups,
             filteredTransactions = filtered,
             categories = categories,
+            categoryUsageCounts = usageCounts,
             learnedMerchantRules = merchantRules.associate { it.normalizedMerchant to it.categoryKey },
             totalSpentAllTime = filtered.filter { !it.isCredit }.sumOf { it.amount },
             totalCreditedAllTime = filtered.filter { it.isCredit }.sumOf { it.amount },

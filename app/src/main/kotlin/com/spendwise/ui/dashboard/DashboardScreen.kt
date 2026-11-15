@@ -221,6 +221,58 @@ fun DashboardScreen(
                 }
             }
 
+            // Pending Uncategorized UPI Transfers Banner
+            if (uiState.uncategorizedUpiTransactions.isNotEmpty()) {
+                item {
+                    Card(
+                        onClick = { viewModel.openUpiCategorizeSheet() },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    Icons.Default.Rule,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Column {
+                                    Text(
+                                        "${uiState.uncategorizedUpiTransactions.size} UPI transfer${if (uiState.uncategorizedUpiTransactions.size > 1) "s" else ""} need category",
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Text(
+                                        "Tap to review & assign categories",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+
             // Section Header
             item {
                 Row(
@@ -294,11 +346,63 @@ fun DashboardScreen(
         }
     }
 
+    if (uiState.showUpiCategorizePrompt && uiState.uncategorizedUpiTransactions.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissUpiPromptForSession() },
+            icon = {
+                Icon(
+                    Icons.Default.Rule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    "Set Categories for New UPI Transfers?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    "SpendWise detected ${uiState.uncategorizedUpiTransactions.size} new UPI transfer${if (uiState.uncategorizedUpiTransactions.size > 1) "s" else ""} registered from your bank SMS that haven't been categorized yet.\n\nWould you like to set categories for them now?"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissUpiPromptForSession() }) {
+                    Text("Not Now")
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.openUpiCategorizeSheet() }) {
+                    Text("Set Categories")
+                }
+            }
+        )
+    }
+
+    if (uiState.showUpiCategorizeSheet) {
+        PendingUpiCategorizationSheet(
+            pendingTransactions = uiState.uncategorizedUpiTransactions,
+            categories = uiState.categories,
+            categoryUsageCounts = uiState.categoryUsageCounts,
+            currency = uiState.budgetState?.currency ?: "₹",
+            onDismiss = { viewModel.hideUpiCategorizeSheet() },
+            onCategorize = { tx, catKey ->
+                viewModel.categorizeTransaction(tx, catKey)
+            },
+            onEditDetails = { tx ->
+                viewModel.startEditing(tx)
+            }
+        )
+    }
+
     if (uiState.showAddTransactionSheet) {
         TransactionFormSheet(
             currency = uiState.budgetState?.currency ?: "₹",
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
             categories = uiState.categories,
+            categoryUsageCounts = uiState.categoryUsageCounts,
             learnedMerchantRules = uiState.learnedMerchantRules,
             onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.hideAddSheet() },
@@ -312,6 +416,7 @@ fun DashboardScreen(
             initialTransaction = editing,
             defaultIncludeCreditsInBudget = uiState.defaultIncludeCreditsInBudget,
             categories = uiState.categories,
+            categoryUsageCounts = uiState.categoryUsageCounts,
             learnedMerchantRules = uiState.learnedMerchantRules,
             onCreateCategory = viewModel::createCustomCategory,
             onDismiss = { viewModel.stopEditing() },
